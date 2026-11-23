@@ -1,4 +1,4 @@
--- Run this SQL once in your Supabase Dashboard -> SQL Editor
+-- Age of Sail Classroom Fleets Table
 create table if not exists public.fleets (
   room_code text not null,
   client_id text not null,
@@ -18,27 +18,44 @@ create table if not exists public.fleets (
   primary key (room_code, client_id)
 );
 
+create index if not exists idx_fleets_room_updated
+  on public.fleets (room_code, updated_at desc);
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.fleets to anon, authenticated;
+
 alter table public.fleets enable row level security;
 
 drop policy if exists "Allow classroom read fleets" on public.fleets;
 create policy "Allow classroom read fleets"
   on public.fleets for select
-  using (true);
+  to anon, authenticated
+  using (char_length(room_code) between 1 and 40);
 
-drop policy if exists "Allow classroom upsert fleets" on public.fleets;
-create policy "Allow classroom upsert fleets"
+drop policy if exists "Allow classroom insert fleets" on public.fleets;
+create policy "Allow classroom insert fleets"
   on public.fleets for insert
-  with check (true);
+  to anon, authenticated
+  with check (
+    char_length(room_code) between 1 and 40
+    and char_length(client_id) between 1 and 60
+  );
 
 drop policy if exists "Allow classroom update fleets" on public.fleets;
 create policy "Allow classroom update fleets"
   on public.fleets for update
-  using (true);
+  to anon, authenticated
+  using (char_length(room_code) between 1 and 40)
+  with check (
+    char_length(room_code) between 1 and 40
+    and char_length(client_id) between 1 and 60
+  );
 
 drop policy if exists "Allow classroom delete fleets" on public.fleets;
 create policy "Allow classroom delete fleets"
   on public.fleets for delete
-  using (true);
+  to anon, authenticated
+  using (char_length(room_code) between 1 and 40);
 
 do $$
 begin

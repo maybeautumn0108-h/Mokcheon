@@ -165,8 +165,10 @@ export default function App() {
     };
 
     if (isSupabaseConfigured) {
-      upsertPlayerToSupabase(cleanRoom, payload);
-      return;
+      const timer = setTimeout(() => {
+        upsertPlayerToSupabase(cleanRoom, payload);
+      }, 450);
+      return () => clearTimeout(timer);
     }
 
     const nextMap = savePlayerToRoom(cleanRoom, payload);

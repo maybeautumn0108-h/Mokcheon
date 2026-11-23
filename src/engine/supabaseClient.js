@@ -1,7 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL || '').trim();
-const supabaseAnonKey = (import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
+const DEFAULT_PUBLIC_URL = 'https://ieysfpbkkuacrsqoosly.supabase.co';
+const DEFAULT_PUBLISHABLE_KEY = 'sb_publishable_9zYmTJrgIia-8D0QlYG0Pw_RNgKupVR';
+
+const supabaseUrl = (
+  import.meta.env?.VITE_SUPABASE_URL || DEFAULT_PUBLIC_URL
+).trim();
+const supabaseAnonKey = (
+  import.meta.env?.VITE_SUPABASE_ANON_KEY || DEFAULT_PUBLISHABLE_KEY
+).trim();
 
 const isSecretKeyMistake = supabaseAnonKey.startsWith('sb_secret_');
 
