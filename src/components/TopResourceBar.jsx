@@ -1,9 +1,15 @@
 import React from 'react';
-import { Anchor, Compass, Coins, Droplets, HeartPulse, Package, AlertTriangle } from 'lucide-react';
+import { Anchor, Compass, Coins, Droplets, HeartPulse, Package, AlertTriangle, ScrollText } from 'lucide-react';
 import { getTurnInfo } from '../data/calendar.js';
 import { getMissionById } from '../data/missions.js';
 
-export default function TopResourceBar({ state, displayTurn, canReset = false, onReset }) {
+export default function TopResourceBar({
+  state,
+  displayTurn,
+  canReset = false,
+  onReset,
+  onOpenBriefing,
+}) {
   const mission = getMissionById(state.missionId);
   const shownTurn = displayTurn ?? state.turn;
   const turnInfo = getTurnInfo(shownTurn);
@@ -23,9 +29,15 @@ export default function TopResourceBar({ state, displayTurn, canReset = false, o
             <span className="text-amber-200/70 font-medium">· {turnInfo.label}</span>
           </div>
 
-          <span className="rounded-full bg-slate-900 border border-slate-700 px-2 py-0.5 text-[10px] font-bold text-sky-300">
-            {mission.shortTitle}
-          </span>
+          <button
+            type="button"
+            onClick={onOpenBriefing}
+            title="미션 항해 칙령서 및 지도 보기"
+            className="inline-flex items-center gap-1 rounded-full bg-slate-900 hover:bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 text-[10px] font-bold text-amber-200 transition cursor-pointer"
+          >
+            <ScrollText className="w-3 h-3 text-amber-400" />
+            <span>{mission.shortTitle}</span>
+          </button>
 
           {state.isSpoiled ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/20 border border-rose-400/40 px-2 py-0.5 text-[11px] font-bold text-rose-300 animate-pulse">

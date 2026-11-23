@@ -26,6 +26,7 @@ import LobbyView from './components/LobbyView.jsx';
 import ActivityStepPanel from './components/ActivityStepPanel.jsx';
 import InteractionModal from './components/InteractionModal.jsx';
 import TurnTransitionOverlay from './components/TurnTransitionOverlay.jsx';
+import MissionBriefingModal from './components/MissionBriefingModal.jsx';
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { getTurnInfo } from './data/calendar.js';
 import { getMissionById } from './data/missions.js';
@@ -176,6 +177,7 @@ export default function App() {
   const [teacherAllFleetsByRoom, setTeacherAllFleetsByRoom] = useState({});
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [turnTransition, setTurnTransition] = useState(null);
+  const [showMissionBriefing, setShowMissionBriefing] = useState(false);
 
   const sailTimerRef = useRef(null);
   const turnAnimTimerRef = useRef(null);
@@ -460,6 +462,9 @@ export default function App() {
       prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
       if (roomMeta.phase === 'playing') {
         triggerTurnTransition(roomMeta.currentTurn);
+        if (roomMeta.currentTurn === 1) {
+          setShowMissionBriefing(true);
+        }
       }
       return;
     }
@@ -755,6 +760,7 @@ export default function App() {
     setPlayMode('solo');
     setGameState(createInitialGameState(soloMissionId));
     setActiveTab('helm');
+    setShowMissionBriefing(true);
     triggerTurnTransition(1);
   };
 
@@ -971,6 +977,7 @@ export default function App() {
     }
     if (!isSpectatorHost) {
       setPlayMode('online');
+      setShowMissionBriefing(true);
       prevRoomTurnRef.current = 1;
       prevRoomTurnPhaseRef.current = 'sail_card';
     }
@@ -1419,6 +1426,7 @@ export default function App() {
           displayTurn={displayTurn}
           canReset={playMode === 'solo'}
           onReset={handleReset}
+          onOpenBriefing={() => setShowMissionBriefing(true)}
         />
 
         <main className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
@@ -1781,6 +1789,12 @@ export default function App() {
           canReset={playMode === 'solo'}
           onReset={handleReset}
           onClose={() => setShowSettlement(false)}
+        />
+      )}
+      {showMissionBriefing && (
+        <MissionBriefingModal
+          missionId={gameState.missionId}
+          onClose={() => setShowMissionBriefing(false)}
         />
       )}
       <TurnTransitionOverlay transition={turnTransition} />

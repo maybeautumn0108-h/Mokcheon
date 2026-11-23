@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Anchor, CheckCircle2, Compass, Ruler } from 'lucide-react';
+import { AlertTriangle, Anchor, CheckCircle2, Compass, Ruler, Snowflake } from 'lucide-react';
 
 export default function TurnResultModal({ outcome, onClose }) {
   if (!outcome) return null;
@@ -72,6 +72,16 @@ export default function TurnResultModal({ outcome, onClose }) {
         {outcome.newlySpoiled && (
           <div className="mt-2.5 rounded-xl border border-amber-500/40 bg-amber-950/40 p-2.5 text-xs text-amber-200">
             <strong>식수 부패 및 괴혈병 발생!</strong> 연속 8턴 이상 기항지에 정박하지 않아 이후 기항 시까지 식량·식수 소모가 1.5배로 증가합니다.
+          </div>
+        )}
+
+        {/* Polar Region Alert */}
+        {outcome.polarZone && (
+          <div className="mt-2.5 rounded-xl border border-cyan-400/50 bg-cyan-950/45 p-2.5 text-xs text-cyan-100 flex items-center gap-2">
+            <Snowflake className="w-4 h-4 text-cyan-300 shrink-0" />
+            <span>
+              <strong>{outcome.polarZone.label}:</strong> {outcome.polarZone.warning}
+            </span>
           </div>
         )}
 

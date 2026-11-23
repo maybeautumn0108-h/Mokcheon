@@ -1,9 +1,26 @@
 import React, { useMemo } from 'react';
-import { AlertTriangle, Anchor, CloudRain, Compass, Navigation, Radio } from 'lucide-react';
+import { AlertTriangle, Anchor, CloudRain, Compass, Navigation, Radio, Snowflake } from 'lucide-react';
 import { getCoastalSightings } from '../data/worldCoastlines.js';
-import { getWeatherById } from '../data/weather.js';
+import { getPolarZone, getWeatherById, isSnowLatitude } from '../data/weather.js';
 import { COAST_SIGHT_RADIUS_DEG, FLEET_RADAR_RADIUS_DEG, findVisiblePortLandmarks } from '../engine/navigation.js';
 import PortHorizonLandmark from './PortHorizonLandmark.jsx';
+
+const SNOW_FLAKES = [
+  { x: 18, y: 10, r: 1.5, fast: false, delay: '0s' },
+  { x: 46, y: 24, r: 1.9, fast: true, delay: '-1.1s' },
+  { x: 78, y: 6, r: 1.3, fast: false, delay: '-2.4s' },
+  { x: 112, y: 30, r: 2.0, fast: true, delay: '-0.7s' },
+  { x: 145, y: 12, r: 1.4, fast: false, delay: '-1.8s' },
+  { x: 176, y: 20, r: 1.8, fast: true, delay: '-2.9s' },
+  { x: 208, y: 8, r: 1.5, fast: false, delay: '-0.4s' },
+  { x: 242, y: 28, r: 2.1, fast: true, delay: '-1.5s' },
+  { x: 274, y: 14, r: 1.4, fast: false, delay: '-2.1s' },
+  { x: 306, y: 22, r: 1.9, fast: true, delay: '-0.9s' },
+  { x: 338, y: 10, r: 1.6, fast: false, delay: '-2.6s' },
+  { x: 64, y: 36, r: 1.7, fast: true, delay: '-1.9s' },
+  { x: 192, y: 34, r: 1.5, fast: false, delay: '-1.3s' },
+  { x: 290, y: 38, r: 1.8, fast: true, delay: '-0.2s' },
+];
 
 const FOV_HALF_DEG = 72;
 
@@ -69,6 +86,8 @@ export default function DeckView({
 }) {
   const weather = useMemo(() => getWeatherById(weatherId), [weatherId]);
   const isStormy = weatherId === 'storm' || weatherId === 'squall';
+  const polarZone = useMemo(() => getPolarZone(lat), [lat]);
+  const isSnowing = useMemo(() => isSnowLatitude(lat), [lat]);
   const sightings = useMemo(
     () => getCoastalSightings(lat, lon, headingDeg, COAST_SIGHT_RADIUS_DEG),
     [lat, lon, headingDeg],
@@ -134,25 +153,31 @@ export default function DeckView({
   const relWindDeg = ((windToDeg - headingDeg) % 360 + 360) % 360;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-slate-900 shadow-lg">
+    <section
+      className={`relative overflow-hidden rounded-2xl border bg-slate-900 shadow-lg ${
+        polarZone ? 'border-cyan-300/65 ring-1 ring-cyan-400/30' : 'border-amber-500/25'
+      }`}
+    >
       {/* Top Viewport Overlay Badges */}
       <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-none">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 backdrop-blur-sm border border-slate-700/70 px-2.5 py-1 text-[11px] font-semibold text-slate-200">
             <Compass className="w-3.5 h-3.5 text-amber-400" />
             <span>선수 {String(headingDeg).padStart(3, '0')}°</span>
           </div>
           <div
             className={`inline-flex items-center gap-1 rounded-full backdrop-blur-sm border px-2 py-1 text-[10px] font-bold ${
-              weatherId === 'storm'
-                ? 'bg-purple-950/90 border-purple-400/60 text-purple-200 animate-pulse'
-                : isStormy
-                  ? 'bg-rose-950/85 border-rose-400/50 text-rose-200'
-                  : 'bg-slate-950/75 border-slate-700/70 text-slate-300'
+              polarZone
+                ? 'bg-cyan-950/90 border-cyan-300/60 text-cyan-100 animate-pulse'
+                : weatherId === 'storm'
+                  ? 'bg-purple-950/90 border-purple-400/60 text-purple-200 animate-pulse'
+                  : isStormy
+                    ? 'bg-rose-950/85 border-rose-400/50 text-rose-200'
+                    : 'bg-slate-950/75 border-slate-700/70 text-slate-300'
             }`}
           >
-            <CloudRain className="w-3 h-3" />
-            <span>{weather.name}</span>
+            {polarZone ? <Snowflake className="w-3 h-3 text-cyan-300" /> : <CloudRain className="w-3 h-3" />}
+            <span>{polarZone ? `${polarZone.shortLabel}` : weather.name}</span>
           </div>
         </div>
 
@@ -176,9 +201,15 @@ export default function DeckView({
         )}
       </div>
 
-      {/* Bottom Viewport Alerts: Rival Fleet & Blocked Land Ahead */}
-      {(closestRival || isBlockedAhead) && (
+      {/* Bottom Viewport Alerts: Polar Warning, Rival Fleet & Blocked Land Ahead */}
+      {(polarZone || closestRival || isBlockedAhead) && (
         <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 pointer-events-none flex flex-col items-center gap-1">
+          {polarZone && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-950/90 backdrop-blur-sm border border-cyan-300/70 px-3 py-1 text-[11px] font-bold text-cyan-100 shadow-lg">
+              <Snowflake className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+              <span>{polarZone.warning}</span>
+            </div>
+          )}
           {isBlockedAhead && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-950/90 backdrop-blur-sm border border-amber-400/60 px-3 py-1 text-[11px] font-bold text-amber-200 shadow-lg">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -272,6 +303,18 @@ export default function DeckView({
 
           {/* Ocean Surface */}
           <rect x="0" y="92" width="360" height="110" fill="url(#seaGrad)" />
+
+          {/* Polar Icebergs & Sea Ice */}
+          {(polarZone || isSnowing) && (
+            <g opacity="0.92">
+              <polygon points="34,96 48,79 62,88 71,96" fill="#e0f2fe" stroke="#7dd3fc" strokeWidth="0.7" />
+              <polygon points="48,79 56,96 71,96 62,88" fill="#bae6fd" />
+              <polygon points="274,97 290,76 306,85 318,97" fill="#f0f9ff" stroke="#7dd3fc" strokeWidth="0.7" />
+              <polygon points="290,76 297,97 318,97 306,85" fill="#bae6fd" />
+              <ellipse cx="110" cy="112" rx="14" ry="2.2" fill="#e0f2fe" opacity="0.55" />
+              <ellipse cx="250" cy="124" rx="18" ry="2.6" fill="#bae6fd" opacity="0.5" />
+            </g>
+          )}
 
           {/* Other Student Ships on Horizon (within 2.5 cm / 25°) */}
           {visibleRivalShips.map((ship) => (
@@ -376,6 +419,22 @@ export default function DeckView({
             <text x="180" y="102">정면</text>
             <text x="330" y="102">우현</text>
           </g>
+
+          {/* Falling Polar Snowflakes */}
+          {(polarZone || isSnowing) && (
+            <g fill="#f8fafc" opacity="0.9">
+              {SNOW_FLAKES.map((sf, idx) => (
+                <circle
+                  key={idx}
+                  cx={sf.x}
+                  cy={sf.y}
+                  r={sf.r}
+                  className={sf.fast ? 'animate-snow-fast' : 'animate-snow-slow'}
+                  style={{ animationDelay: sf.delay }}
+                />
+              ))}
+            </g>
+          )}
         </svg>
 
         {isSailing && (

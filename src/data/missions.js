@@ -6,10 +6,16 @@
  */
 
 export const WEST_ROUTE_PORTS = new Set([
+  'stjohns',
+  'jamestown',
   'havana',
   'salvador',
+  'laplata',
   'magellanstrait',
+  'valparaiso',
+  'callao',
   'acapulco',
+  'monterey',
   'guam',
 ]);
 

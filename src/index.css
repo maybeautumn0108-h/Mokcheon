@@ -148,3 +148,45 @@
 .animate-battle-flash {
   animation: battle-flash 0.95s ease-out forwards;
 }
+
+@keyframes snow-fall-slow {
+  0% {
+    transform: translate3d(-4px, -14px, 0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate3d(12px, 165px, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes snow-fall-fast {
+  0% {
+    transform: translate3d(4px, -18px, 0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.95;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(-14px, 175px, 0);
+    opacity: 0;
+  }
+}
+
+.animate-snow-slow {
+  animation: snow-fall-slow 4.2s linear infinite;
+}
+
+.animate-snow-fast {
+  animation: snow-fall-fast 2.9s linear infinite;
+}

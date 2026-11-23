@@ -79,13 +79,41 @@ export function getWeatherById(id) {
   return WEATHERS.find((w) => w.id === id) || WEATHERS[0];
 }
 
+export function isSnowLatitude(lat = 0) {
+  return lat >= 55 || lat <= -51;
+}
+
+export function getPolarZone(lat = 0) {
+  if (lat >= 58) {
+    return {
+      id: 'arctic',
+      label: '북극권 극지 해역',
+      shortLabel: '북극권 · 눈/유빙',
+      warning: '북극권 극한 해역 진입! 눈보라가 날리고 유빙이 떠다니고 있습니다.',
+    };
+  }
+  if (lat <= -53) {
+    return {
+      id: 'antarctic',
+      label: '남극권 극지 해역',
+      shortLabel: '남극권 · 눈/빙산',
+      warning: '남극권 극한 해역 진입! 눈발이 휘날리고 거대한 빙산이 관측됩니다.',
+    };
+  }
+  return null;
+}
+
 export function rollWeather(lat = 0, rng = Math.random) {
-  // Slightly higher chance of rough seas in high latitudes / Roaring Forties
+  // Slightly higher chance of rough seas in high latitudes / polar waters
   const isHighLat = Math.abs(lat) >= 34;
+  const isPolar = Math.abs(lat) >= 54;
   const adjusted = WEATHERS.map((w) => {
     let weight = w.weight;
     if (isHighLat && (w.id === 'squall' || w.id === 'storm')) {
       weight += 5;
+    }
+    if (isPolar && (w.id === 'fog' || w.id === 'squall')) {
+      weight += 6;
     }
     return { ...w, weight };
   });

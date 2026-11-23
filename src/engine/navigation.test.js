@@ -16,7 +16,7 @@ import {
   getCelestialTarget,
   measureWithSway,
 } from './quadrant.js';
-import { getWeatherById, rollWeather } from '../data/weather.js';
+import { getPolarZone, getWeatherById, isSnowLatitude, rollWeather } from '../data/weather.js';
 import {
   OFFLINE_TIMEOUT_MS,
   areAllFleetsCardsReady,
@@ -35,6 +35,7 @@ import {
 import {
   SAFE_OFFSHORE_DEG,
   applySituationCardToState,
+  b4EuclideanDeg,
   buySpecialty,
   buySupplies,
   calculateFinalSettlement,
@@ -572,4 +573,32 @@ test('Multi-mission system enforces Western Americas route for Mission 2 and ful
   assert.equal(m3Full.hasWestRoute, true);
   assert.equal(m3Full.hasEastRoute, true);
   assert.equal(m3Full.goalAchieved, true);
+});
+
+test('New Americas ports maintain healthy separation (>= 14°) and polar waters trigger snow/warnings', () => {
+  const newAmericasIds = ['stjohns', 'jamestown', 'monterey', 'laplata', 'valparaiso', 'callao'];
+  for (const id of newAmericasIds) {
+    const port = PORTS.find((p) => p.id === id);
+    assert.ok(port, `Missing new port ${id}`);
+    for (const other of PORTS) {
+      if (other.id === id) continue;
+      const dist = b4EuclideanDeg(port.lat, port.lon, other.lat, other.lon);
+      assert.ok(dist >= 14.0, `Port ${id} too close to ${other.id}: ${dist.toFixed(2)}°`);
+    }
+  }
+
+  assert.equal(isSnowLatitude(38.7), false);
+  assert.equal(getPolarZone(38.7), null);
+  assert.equal(isSnowLatitude(60), true);
+  assert.equal(getPolarZone(60)?.id, 'arctic');
+  assert.equal(isSnowLatitude(-54), true);
+  assert.equal(getPolarZone(-54)?.id, 'antarctic');
+
+  const arcticSail = executeSailTurn({
+    ...createInitialGameState(),
+    lat: 60,
+    lon: -10,
+    headingDeg: 270,
+  });
+  assert.equal(arcticSail.outcome.polarZone?.id, 'arctic');
 });

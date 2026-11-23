@@ -15,7 +15,7 @@ import {
 } from '../data/ports.js';
 import { MAX_TURNS, getTurnInfo } from '../data/calendar.js';
 import { evaluateWind, normalizeDeg } from '../data/windZones.js';
-import { rollWeather } from '../data/weather.js';
+import { getPolarZone, rollWeather } from '../data/weather.js';
 import { evaluateMissionProgress, getMissionById } from '../data/missions.js';
 
 export const SAFE_OFFSHORE_DEG = 1.8;
@@ -415,10 +415,12 @@ export function executeSailTurn(state) {
     moveResult.blockedRanges.length > 0
       ? ` · 갈 수 없는 방위: ${moveResult.blockedRanges.join(', ')}`
       : '';
+  const polarZone = getPolarZone(moveResult.endLat);
+  const polarText = polarZone ? ` · ${polarZone.shortLabel}` : '';
 
   const logDetail = `방위 ${String(planned.headingDeg).padStart(3, '0')}° · ${planned.windClass.label}${
     state.isFullSail ? '(전속)' : ''
-  } · 식량 -${foodCost}${blockedText}`;
+  } · 식량 -${foodCost}${blockedText}${polarText}`;
 
   const nextState = {
     ...state,
@@ -468,6 +470,7 @@ export function executeSailTurn(state) {
     hullDamage,
     newlySpoiled: !state.isSpoiled && nextIsSpoiled,
     nearbyPort: nearbyPort ? { id: nearbyPort.id, name: nearbyPort.name } : null,
+    polarZone,
     nextStatus,
   };
 
