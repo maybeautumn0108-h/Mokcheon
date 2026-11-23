@@ -1,6 +1,8 @@
 import { isSupabaseConfigured, supabase } from './supabaseClient.js';
+import { MAX_TURNS } from '../data/calendar.js';
 
 const STORAGE_PREFIX = 'age_of_sail_room_v1_';
+const ROOM_META_PREFIX = 'age_of_sail_room_meta_v1_';
 const GAME_STATE_KEY = 'age_of_sail_saved_game_v1';
 
 export { isSupabaseConfigured };
@@ -83,11 +85,36 @@ export function clearRoomSnapshot(roomCode) {
   }
 }
 
+export function loadLocalRoomMeta(roomCode, fallbackHostId) {
+  try {
+    const raw = localStorage.getItem(`${ROOM_META_PREFIX}${roomCode}`);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // Ignore
+  }
+  return {
+    roomCode,
+    hostClientId: fallbackHostId || 'local-host',
+    phase: 'waiting',
+    currentTurn: 1,
+  };
+}
+
+export function saveLocalRoomMeta(roomCode, meta) {
+  try {
+    localStorage.setItem(`${ROOM_META_PREFIX}${roomCode}`, JSON.stringify(meta));
+  } catch {
+    // Ignore
+  }
+  return meta;
+}
+
 function rowToFleet(row) {
   return {
     clientId: row.client_id,
     teamName: row.team_name,
     turn: row.turn,
+    completedTurn: row.completed_turn ?? 0,
     lat: row.lat,
     lon: row.lon,
     headingDeg: row.heading_deg,
@@ -100,6 +127,130 @@ function rowToFleet(row) {
     trail: Array.isArray(row.trail) ? row.trail : [],
     updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   };
+}
+
+function rowToRoom(row) {
+  if (!row) return null;
+  return {
+    roomCode: row.room_code,
+    hostClientId: row.host_client_id,
+    phase: row.phase || 'waiting',
+    currentTurn: row.current_turn ?? 1,
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+  };
+}
+
+export async function fetchOrCreateRoomSupabase(roomCode, clientId) {
+  if (!supabase || !roomCode) return null;
+
+  const { data: existing, error: selErr } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('room_code', roomCode)
+    .maybeSingle();
+
+  if (existing) return rowToRoom(existing);
+  if (selErr) {
+    console.warn('[Supabase] fetch room error:', selErr.message);
+  }
+
+  const initialRoom = {
+    room_code: roomCode,
+    host_client_id: clientId,
+    phase: 'waiting',
+    current_turn: 1,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: inserted, error: insErr } = await supabase
+    .from('rooms')
+    .upsert(initialRoom, { onConflict: 'room_code', ignoreDuplicates: true })
+    .select()
+    .maybeSingle();
+
+  if (inserted) return rowToRoom(inserted);
+
+  if (insErr) {
+    console.warn('[Supabase] create room error:', insErr.message);
+  }
+
+  const { data: fallback } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('room_code', roomCode)
+    .maybeSingle();
+
+  return rowToRoom(fallback) || {
+    roomCode,
+    hostClientId: clientId,
+    phase: 'waiting',
+    currentTurn: 1,
+  };
+}
+
+export async function updateRoomInSupabase(roomCode, patch) {
+  if (!supabase || !roomCode) return null;
+  const dbPatch = {
+    updated_at: new Date().toISOString(),
+  };
+  if (patch.phase !== undefined) dbPatch.phase = patch.phase;
+  if (patch.currentTurn !== undefined) dbPatch.current_turn = patch.currentTurn;
+  if (patch.hostClientId !== undefined) dbPatch.host_client_id = patch.hostClientId;
+
+  const { data, error } = await supabase
+    .from('rooms')
+    .update(dbPatch)
+    .eq('room_code', roomCode)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[Supabase] update room error:', error.message);
+    return null;
+  }
+  return rowToRoom(data);
+}
+
+/**
+ * Pure helper to determine whether all real fleets in the room have finished `currentTurn`.
+ */
+export function areAllFleetsReadyForNextTurn(fleets, currentTurn) {
+  const realFleets = (fleets || []).filter((f) => !f.isDemo);
+  if (realFleets.length === 0) return false;
+  return realFleets.every(
+    (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= currentTurn,
+  );
+}
+
+/**
+ * Atomically advance room turn in Supabase if all active fleets have completed `currentTurn`.
+ */
+export async function tryAdvanceRoomTurnSupabase(roomCode, currentTurn, fleets) {
+  if (!supabase || !roomCode) return false;
+  if (!areAllFleetsReadyForNextTurn(fleets, currentTurn)) return false;
+
+  const isFinalTurn = currentTurn >= MAX_TURNS;
+  const nextTurn = isFinalTurn ? MAX_TURNS : currentTurn + 1;
+  const nextPhase = isFinalTurn ? 'finished' : 'playing';
+
+  const { data, error } = await supabase
+    .from('rooms')
+    .update({
+      current_turn: nextTurn,
+      phase: nextPhase,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('room_code', roomCode)
+    .eq('phase', 'playing')
+    .eq('current_turn', currentTurn)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[Supabase] advance turn error:', error.message);
+    return false;
+  }
+  return Boolean(data);
 }
 
 export async function fetchRoomFleetsFromSupabase(roomCode) {
@@ -129,6 +280,7 @@ export async function upsertPlayerToSupabase(roomCode, playerPayload) {
       client_id: playerPayload.clientId,
       team_name: playerPayload.teamName,
       turn: playerPayload.turn,
+      completed_turn: playerPayload.completedTurn ?? 0,
       lat: playerPayload.lat,
       lon: playerPayload.lon,
       heading_deg: playerPayload.headingDeg,
@@ -159,18 +311,28 @@ export async function clearRoomInSupabase(roomCode) {
   }
 }
 
-export function subscribeToRoomSupabase(roomCode, onSnapshot) {
+export function subscribeToRoomAndFleetsSupabase(
+  roomCode,
+  clientId,
+  { onRoomChange, onFleetsChange },
+) {
   if (!supabase || !roomCode) return () => {};
+  let active = true;
 
-  const refresh = async () => {
-    const map = await fetchRoomFleetsFromSupabase(roomCode);
-    onSnapshot(map);
+  const refreshAll = async () => {
+    const [room, fleetsMap] = await Promise.all([
+      fetchOrCreateRoomSupabase(roomCode, clientId),
+      fetchRoomFleetsFromSupabase(roomCode),
+    ]);
+    if (!active) return;
+    if (room) onRoomChange?.(room);
+    onFleetsChange?.(fleetsMap);
   };
 
-  refresh();
+  refreshAll();
 
   const channel = supabase
-    .channel(`fleets-${roomCode}`)
+    .channel(`room-sync-${roomCode}-${clientId}`)
     .on(
       'postgres_changes',
       {
@@ -179,13 +341,36 @@ export function subscribeToRoomSupabase(roomCode, onSnapshot) {
         table: 'fleets',
         filter: `room_code=eq.${roomCode}`,
       },
-      () => {
-        refresh();
+      async () => {
+        const map = await fetchRoomFleetsFromSupabase(roomCode);
+        if (active) onFleetsChange?.(map);
+      },
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'rooms',
+        filter: `room_code=eq.${roomCode}`,
+      },
+      (payload) => {
+        if (!active) return;
+        if (payload.new && payload.new.room_code) {
+          onRoomChange?.(rowToRoom(payload.new));
+        }
       },
     )
     .subscribe();
 
+  // Safety background sync every 4s in case mobile sleep drops a realtime packet
+  const pollId = setInterval(() => {
+    refreshAll();
+  }, 4000);
+
   return () => {
+    active = false;
+    clearInterval(pollId);
     supabase.removeChannel(channel);
   };
 }
@@ -201,6 +386,7 @@ export function getDemoRivalFleets(currentTurn) {
       teamName: '2조 마젤란',
       isDemo: true,
       turn: t,
+      completedTurn: t - 1,
       lat: Number((38.7 - Math.min(t, 12) * 5.8 + Math.max(0, t - 12) * 1.2).toFixed(2)),
       lon: Number((-9.1 - Math.min(t, 16) * 4.6).toFixed(2)),
       headingDeg: t < 12 ? 215 : 265,
@@ -217,6 +403,7 @@ export function getDemoRivalFleets(currentTurn) {
       teamName: '3조 바스쿠다가마',
       isDemo: true,
       turn: t,
+      completedTurn: t - 1,
       lat: Number((37.2 - Math.min(t, 6) * 4.5 - Math.max(0, t - 6) * 3.8).toFixed(2)),
       lon: Number((-11.0 - Math.min(t, 4) * 3.0 + Math.max(0, t - 6) * 4.2).toFixed(2)),
       headingDeg: t < 6 ? 195 : 145,

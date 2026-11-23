@@ -16,6 +16,7 @@ import {
   measureWithSway,
 } from './quadrant.js';
 import { getWeatherById, rollWeather } from '../data/weather.js';
+import { areAllFleetsReadyForNextTurn } from './fleetSync.js';
 import {
   SAFE_OFFSHORE_DEG,
   applySituationCardToState,
@@ -270,4 +271,50 @@ test('Weather-driven Quadrant difficulty blocks occluded shots and tightens stor
   const stormFrame = computeWeatherSway('storm', 1.2);
   assert.ok(stormFrame.cloudOpacity > 0.4);
   assert.ok(['clear', 'partly_cloudy', 'fog', 'squall', 'storm'].includes(rollWeather(-40)));
+});
+
+test('Synchronized turn lockstep tracks completedTurn and waits until all active fleets finish', () => {
+  let s1 = createInitialGameState();
+  assert.equal(s1.completedTurn, 0);
+
+  // Sail Turn 1 -> completedTurn stays 0 until Situation Card is picked
+  const sailRes = executeSailTurn(s1);
+  s1 = sailRes.nextState;
+  assert.equal(s1.turn, 2);
+  assert.equal(s1.completedTurn, 0);
+
+  // Pick Situation Card -> Turn 1 is now completed
+  const cardRes = applySituationCardToState(s1, SITUATION_CARDS[0]);
+  s1 = cardRes.nextState;
+  assert.equal(s1.completedTurn, 1);
+
+  // Docking also marks the turn completed
+  let s2 = { ...createInitialGameState(), hasDepartedLisbon: true };
+  const dockRes = executeDockTurn(s2);
+  assert.equal(dockRes.nextState.completedTurn, 1);
+
+  // Room lockstep check: 1조 done, 2조 still in Turn 1 -> NOT ready
+  assert.equal(
+    areAllFleetsReadyForNextTurn(
+      [
+        { clientId: 'a', status: 'active', completedTurn: 1 },
+        { clientId: 'b', status: 'active', completedTurn: 0 },
+      ],
+      1,
+    ),
+    false,
+  );
+
+  // Both active fleets done (or sunk/returned) -> READY for Turn 2
+  assert.equal(
+    areAllFleetsReadyForNextTurn(
+      [
+        { clientId: 'a', status: 'active', completedTurn: 1 },
+        { clientId: 'b', status: 'active', completedTurn: 1 },
+        { clientId: 'c', status: 'stranded', completedTurn: 0 },
+      ],
+      1,
+    ),
+    true,
+  );
 });

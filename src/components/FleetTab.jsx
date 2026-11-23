@@ -1,10 +1,23 @@
 import React, { useState } from 'react';
-import { Lock, Monitor, Radio, Ship, Users, Wifi, WifiOff } from 'lucide-react';
+import {
+  CheckCircle2,
+  Clock,
+  Lock,
+  LogOut,
+  Monitor,
+  Radio,
+  Ship,
+  Users,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 
 const TEACHER_PIN = (import.meta.env?.VITE_TEACHER_PIN || '1492').trim();
 
 export default function FleetTab({
   roomCode,
+  roomMeta,
+  playMode,
   onChangeRoomCode,
   teamName,
   onChangeTeamName,
@@ -14,6 +27,7 @@ export default function FleetTab({
   nearbyFleets,
   myClientId,
   isOnlineSync,
+  onLeaveToLobby,
   onOpenTeacherMode,
 }) {
   const [showPinPrompt, setShowPinPrompt] = useState(false);
@@ -57,22 +71,33 @@ export default function FleetTab({
         {/* Online Sync Indicator */}
         <div
           className={`flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${
-            isOnlineSync
-              ? 'border-emerald-500/40 bg-emerald-950/35 text-emerald-200'
-              : 'border-slate-700/80 bg-slate-950/60 text-slate-400'
+            playMode === 'solo'
+              ? 'border-slate-700/80 bg-slate-950/60 text-slate-300'
+              : isOnlineSync
+                ? 'border-emerald-500/40 bg-emerald-950/35 text-emerald-200'
+                : 'border-slate-700/80 bg-slate-950/60 text-slate-400'
           }`}
         >
           <span className="inline-flex items-center gap-1.5">
-            {isOnlineSync ? (
+            {isOnlineSync && playMode === 'online' ? (
               <Wifi className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <WifiOff className="w-3.5 h-3.5 text-slate-500" />
             )}
-            {isOnlineSync
-              ? 'Supabase 실시간 온라인 연동 활성'
-              : '로컬 모드 (동일 브라우저 탭 간 연동)'}
+            {playMode === 'solo'
+              ? '혼자 연습 모드 (동시 턴 대기 없음)'
+              : isOnlineSync
+                ? `동시 턴 온라인 연동 (제${roomMeta?.currentTurn ?? 1}턴)`
+                : '로컬 모드 (동일 브라우저 탭 간 연동)'}
           </span>
-          <span className="text-[10px] opacity-80">{roomCode || 'HIST-101'}</span>
+          <button
+            type="button"
+            onClick={onLeaveToLobby}
+            className="inline-flex items-center gap-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-200 cursor-pointer"
+          >
+            <LogOut className="w-3 h-3" />
+            대기실
+          </button>
         </div>
 
         {/* Teacher PIN Prompt */}
@@ -182,6 +207,9 @@ export default function FleetTab({
         <div className="space-y-2">
           {allFleets.map((fleet) => {
             const isMe = fleet.clientId === myClientId;
+            const currentTurn = roomMeta?.currentTurn ?? 1;
+            const isDone =
+              fleet.status !== 'active' || (fleet.completedTurn ?? 0) >= currentTurn;
             return (
               <div
                 key={fleet.clientId}
@@ -191,13 +219,36 @@ export default function FleetTab({
                     : 'border-slate-800 bg-slate-950/60'
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-black text-slate-100">
                     {fleet.teamName} {isMe && <span className="text-amber-300">(나)</span>}
                   </span>
-                  <span className="text-[11px] font-bold text-amber-300 tabular-nums">
-                    {fleet.turn}/30턴 · {fleet.gold}G
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {playMode === 'online' && !fleet.isDemo && (
+                      <span
+                        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          isDone
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : 'bg-amber-500/20 text-amber-300'
+                        }`}
+                      >
+                        {isDone ? (
+                          <>
+                            <CheckCircle2 className="w-3 h-3" />
+                            완료
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-3 h-3" />
+                            진행중
+                          </>
+                        )}
+                      </span>
+                    )}
+                    <span className="text-[11px] font-bold text-amber-300 tabular-nums">
+                      {fleet.turn}/30턴 · {fleet.gold}G
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
                   <span>{fleet.lastEvent || '항해 중'}</span>

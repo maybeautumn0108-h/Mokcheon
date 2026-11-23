@@ -25,6 +25,7 @@ export const SPOILAGE_THRESHOLD_TURNS = 6;
 export function createInitialGameState() {
   return {
     turn: 1,
+    completedTurn: 0,
     lat: LISBON_COORDS.lat,
     lon: LISBON_COORDS.lon,
     headingDeg: 205, // SSW initial course toward Canaries/Atlantic
@@ -366,6 +367,7 @@ export function executeSailTurn(state) {
   const nextState = {
     ...state,
     turn: nextStatus === 'active' ? nextTurn : state.turn,
+    completedTurn: nextStatus === 'active' ? state.completedTurn : state.turn,
     lat: moveResult.endLat,
     lon: moveResult.endLon,
     food: nextFood,
@@ -436,6 +438,7 @@ export function applySituationCardToState(state, card) {
   const nextState = {
     ...state,
     ...stateFields,
+    completedTurn: Math.max(state.completedTurn || 0, state.turn - 1),
     status: nextStatus,
     logs: [
       {
@@ -476,6 +479,7 @@ export function executeDockTurn(state) {
   const nextState = {
     ...state,
     turn: nextStatus === 'active' ? nextTurn : state.turn,
+    completedTurn: state.turn,
     turnsWithoutPort: 0,
     isSpoiled: false,
     isDocked: true,

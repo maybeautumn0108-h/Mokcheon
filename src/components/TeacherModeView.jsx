@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, Monitor, RefreshCw, Ship } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Eye,
+  EyeOff,
+  FastForward,
+  Monitor,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Ship,
+} from 'lucide-react';
 import { LAND_POLYGONS } from '../data/worldCoastlines.js';
 import { PORTS } from '../data/ports.js';
 
@@ -7,11 +19,22 @@ const FLEET_COLORS = ['#ef4444', '#38bdf8', '#22c55e', '#f59e0b', '#a855f7', '#e
 
 export default function TeacherModeView({
   roomCode,
+  roomMeta,
   fleets,
   onBackToStudent,
+  onStartVoyage,
+  onForceNextTurn,
+  onResetToWaiting,
   onClearRoom,
 }) {
   const [hideMap, setHideMap] = useState(false);
+
+  const realFleets = fleets.filter((f) => !f.isDemo);
+  const currentTurn = roomMeta?.currentTurn ?? 1;
+  const phase = roomMeta?.phase ?? 'waiting';
+  const readyCount = realFleets.filter(
+    (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= currentTurn,
+  ).length;
 
   return (
     <div className="min-h-dvh bg-slate-950 text-slate-100 p-3 sm:p-5">
@@ -25,7 +48,7 @@ export default function TeacherModeView({
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
-              학생 화면
+              학생/대기실 화면
             </button>
             <div>
               <h1 className="text-base font-black text-amber-300 flex items-center gap-1.5">
@@ -33,13 +56,50 @@ export default function TeacherModeView({
                 교사용 전 세계 선단 관제 모드
               </h1>
               <div className="text-xs text-slate-400">
-                수업방 코드: <strong className="text-slate-200">{roomCode}</strong> · 접속 선단{' '}
-                <strong className="text-sky-300">{fleets.length}척</strong>
+                수업방: <strong className="text-slate-200">{roomCode}</strong> · 상태:{' '}
+                <strong className="text-emerald-300">
+                  {phase === 'waiting'
+                    ? '대기실'
+                    : phase === 'finished'
+                      ? '항해 종료'
+                      : `제${currentTurn}턴 진행 중 (${readyCount}/${realFleets.length}팀 완료)`}
+                </strong>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {phase === 'waiting' && (
+              <button
+                type="button"
+                onClick={onStartVoyage}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3.5 py-2 text-xs font-black text-slate-950 cursor-pointer"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                전원 출항 시작 (1턴)
+              </button>
+            )}
+
+            {phase === 'playing' && (
+              <button
+                type="button"
+                onClick={onForceNextTurn}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-500/20 hover:bg-amber-500/30 px-3.5 py-2 text-xs font-black text-amber-200 cursor-pointer"
+              >
+                <FastForward className="w-4 h-4" />
+                강제 다음 턴 ({Math.min(30, currentTurn + 1)}턴)
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onResetToWaiting}
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-200 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              대기방 리셋
+            </button>
+
             <button
               type="button"
               onClick={() => setHideMap((v) => !v)}
@@ -50,13 +110,13 @@ export default function TeacherModeView({
               }`}
             >
               {hideMap ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              <span>{hideMap ? '전체 공개하기' : '지도 가리기 (학생 차단)'}</span>
+              <span>{hideMap ? '전체 공개하기' : '지도 가리기'}</span>
             </button>
 
             <button
               type="button"
               onClick={onClearRoom}
-              title="방 기록 초기화"
+              title="방 선단 기록 비우기"
               className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-300 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -117,7 +177,7 @@ export default function TeacherModeView({
                 );
               })}
 
-              {/* Landmasses (note y = -lat) */}
+              {/* Landmasses */}
               {LAND_POLYGONS.map((poly, idx) => {
                 const pts = poly.ring.map(([lon, lat]) => `${lon},${-lat}`).join(' ');
                 return (
@@ -194,7 +254,6 @@ export default function TeacherModeView({
               })}
             </svg>
 
-            {/* Privacy Curtain when [지도 가리기] is active */}
             {hideMap && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6 text-center">
                 <EyeOff className="w-12 h-12 text-amber-400 mb-3" />
@@ -212,17 +271,20 @@ export default function TeacherModeView({
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <h2 className="text-sm font-black text-amber-300 flex items-center gap-1.5 mb-3">
             <Ship className="w-4 h-4" />
-            실시간 선단 관제 현황
+            실시간 선단 관제 현황 ({fleets.length}척)
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
             {fleets.map((fleet, idx) => {
               const color = FLEET_COLORS[idx % FLEET_COLORS.length];
+              const isDoneThisTurn =
+                fleet.status !== 'active' || (fleet.completedTurn ?? 0) >= currentTurn;
+
               return (
                 <div
                   key={fleet.clientId}
                   className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="font-black text-white flex items-center gap-1.5">
                       <span
                         className="inline-block w-2.5 h-2.5 rounded-full"
@@ -230,9 +292,27 @@ export default function TeacherModeView({
                       />
                       {fleet.teamName}
                     </span>
-                    <span className="font-bold text-amber-300 tabular-nums">
-                      {fleet.turn}/30턴
-                    </span>
+                    {!fleet.isDemo && phase === 'playing' && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${
+                          isDoneThisTurn
+                            ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                            : 'bg-amber-500/15 border-amber-400/40 text-amber-300'
+                        }`}
+                      >
+                        {isDoneThisTurn ? (
+                          <>
+                            <CheckCircle2 className="w-3 h-3" />
+                            {currentTurn}턴 완료
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-3 h-3" />
+                            진행 중
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-slate-400">
                     금화 {fleet.gold}G · 식량 {fleet.food} · 내구도 {fleet.hull} · 특산품{' '}
@@ -240,8 +320,14 @@ export default function TeacherModeView({
                   </div>
                   {!hideMap && (
                     <div className="text-[11px] text-sky-300 tabular-nums">
-                      관제 좌표: {fleet.lat >= 0 ? `${fleet.lat.toFixed(1)}°N` : `${Math.abs(fleet.lat).toFixed(1)}°S`},{' '}
-                      {fleet.lon >= 0 ? `${fleet.lon.toFixed(1)}°E` : `${Math.abs(fleet.lon).toFixed(1)}°W`}
+                      관제 좌표:{' '}
+                      {fleet.lat >= 0
+                        ? `${fleet.lat.toFixed(1)}°N`
+                        : `${Math.abs(fleet.lat).toFixed(1)}°S`}
+                      ,{' '}
+                      {fleet.lon >= 0
+                        ? `${fleet.lon.toFixed(1)}°E`
+                        : `${Math.abs(fleet.lon).toFixed(1)}°W`}
                     </div>
                   )}
                   <div className="text-[11px] text-slate-300">{fleet.lastEvent}</div>
