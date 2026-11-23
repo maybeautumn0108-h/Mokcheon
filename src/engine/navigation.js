@@ -146,14 +146,14 @@ export function findVisiblePortLandmarks(lat, lon, headingDeg, maxRadiusDeg = 8.
  * Compute blocked azimuth ranges around (lat, lon) within `lookaheadDeg`
  * so the student knows which steering directions are blocked by coastline.
  */
-export function computeBlockedAzimuthSummary(lat, lon, lookaheadDeg = 3.2) {
+export function computeBlockedAzimuthSummary(lat, lon, lookaheadDeg = 2.4) {
   const blocked = [];
   for (let deg = 0; deg < 360; deg += 5) {
     const rad = (deg * Math.PI) / 180;
     const sinB = Math.sin(rad);
     const cosB = Math.cos(rad);
     let hit = false;
-    for (let d = 0.4; d <= lookaheadDeg; d += 0.4) {
+    for (let d = 0.15; d <= lookaheadDeg; d += 0.25) {
       const pLat = lat + d * cosB;
       const pLon = wrapLon(lon + d * sinB);
       if (pLat > 75 || pLat < -65 || isPointOnLand(pLat, pLon)) {
@@ -240,8 +240,26 @@ function pushToSafeOffshore(lat, lon, minOffshoreDeg = SAFE_OFFSHORE_DEG) {
 }
 
 /**
- * Ray-march movement on the B4 Euclidean plane with oblique coastal deflection
- * and automatic 1.8° offshore safe-water separation.
+ * Check if sailing straight ahead from (lat, lon) in `headingDeg` is blocked immediately by land/boundary.
+ */
+export function isDirectionImmediatelyBlocked(lat, lon, headingDeg, checkDeg = 0.45) {
+  const rad = (normalizeDeg(headingDeg) * Math.PI) / 180;
+  const sinB = Math.sin(rad);
+  const cosB = Math.cos(rad);
+  for (let d = 0.15; d <= checkDeg; d += 0.15) {
+    const pLat = lat + d * cosB;
+    const pLon = wrapLon(lon + d * sinB);
+    if (pLat > 75 || pLat < -65 || isPointOnLand(pLat, pLon)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Ray-march movement on the B4 Euclidean plane.
+ * If the path touches land or map boundary, stop cleanly right at the coastline
+ * without deflecting sideways, pushing backwards, or inflicting hull damage.
  */
 export function resolveMovement(startLat, startLon, headingDeg, plannedDeg) {
   const normHeading = normalizeDeg(headingDeg);
@@ -254,9 +272,16 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg) {
 
   let curLat = startLat;
   let curLon = startLon;
+  // Safety guard only if start position itself was somehow inside land
+  if (isPointOnLand(curLat, curLon)) {
+    const rescued = pushToSafeOffshore(curLat, curLon, 0.3);
+    curLat = rescued.lat;
+    curLon = rescued.lon;
+  }
+
   let collided = false;
   let hitBoundary = false;
-  let collidedAtStep = totalSteps;
+  let advancedMainStep = false;
 
   for (let i = 1; i <= totalSteps; i++) {
     const nextLat = curLat + dirLat * stepDeg;
@@ -265,18 +290,17 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg) {
     if (nextLat > 75 || nextLat < -65) {
       hitBoundary = true;
       collided = true;
-      collidedAtStep = i - 1;
       break;
     }
 
-    if (isPointOnLand(nextLat, nextLon)) {
+    if (isPointOnLand(nextLat, nextLon) || isPointOnLand(Number(nextLat.toFixed(3)), Number(nextLon.toFixed(3)))) {
       collided = true;
-      collidedAtStep = i - 1;
       break;
     }
 
     curLat = nextLat;
     curLon = nextLon;
+    advancedMainStep = true;
   }
 
   if (!collided) {
@@ -291,47 +315,30 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg) {
     };
   }
 
-  const traveledBeforeHit = collidedAtStep * stepDeg;
-  const remainingDeg = Math.max(0, plannedDeg - traveledBeforeHit);
-
-  if (!hitBoundary && remainingDeg > 0.2) {
-    const nearest = findNearestCoast(curLat, curLon, 5.0);
-    if (nearest) {
-      const toCoastRad = (nearest.bearingToCoastDeg * Math.PI) / 180;
-      const nLat = -Math.cos(toCoastRad);
-      const nLon = -Math.sin(toCoastRad);
-
-      const t1Lat = -nLon;
-      const t1Lon = nLat;
-      const t2Lat = nLon;
-      const t2Lon = -nLat;
-
-      const dot1 = dirLat * t1Lat + dirLon * t1Lon;
-      const dot2 = dirLat * t2Lat + dirLon * t2Lon;
-      const tLat = dot1 >= dot2 ? t1Lat : t2Lat;
-      const tLon = dot1 >= dot2 ? t1Lon : t2Lon;
-
-      const slideDist = Math.min(remainingDeg * 0.35, 3.5);
-      const slideSteps = Math.max(1, Math.round(slideDist / stepDeg));
-      for (let s = 1; s <= slideSteps; s++) {
-        const candLat = curLat + (tLat * 0.92 + nLat * 0.25) * stepDeg;
-        const candLon = wrapLon(curLon + (tLon * 0.92 + nLon * 0.25) * stepDeg);
-        if (candLat > 75 || candLat < -65 || isPointOnLand(candLat, candLon)) {
-          break;
-        }
-        curLat = candLat;
-        curLon = candLon;
+  // Refine with tiny 0.02° steps so the ship rests cleanly right at the shoreline edge
+  if (!hitBoundary && advancedMainStep) {
+    const microStep = 0.02;
+    for (let m = 0; m < 10; m++) {
+      const mLat = curLat + dirLat * microStep;
+      const mLon = wrapLon(curLon + dirLon * microStep);
+      const rLat = Number(mLat.toFixed(3));
+      const rLon = Number(mLon.toFixed(3));
+      if (mLat > 75 || mLat < -65 || isPointOnLand(mLat, mLon) || isPointOnLand(rLat, rLon)) {
+        break;
       }
+      curLat = mLat;
+      curLon = mLon;
     }
   }
 
-  const safe = pushToSafeOffshore(curLat, curLon, SAFE_OFFSHORE_DEG);
-  const actualDeg = b4EuclideanDeg(startLat, startLon, safe.lat, safe.lon);
-  const blockedRanges = computeBlockedAzimuthSummary(safe.lat, safe.lon, 3.2);
+  const endLat = Number(curLat.toFixed(3));
+  const endLon = Number(curLon.toFixed(3));
+  const actualDeg = b4EuclideanDeg(startLat, startLon, endLat, endLon);
+  const blockedRanges = computeBlockedAzimuthSummary(endLat, endLon, 2.0);
 
   return {
-    endLat: Number(safe.lat.toFixed(3)),
-    endLon: Number(safe.lon.toFixed(3)),
+    endLat,
+    endLon,
     actualDeg: Number(actualDeg.toFixed(2)),
     actualCm: Number((actualDeg / 10).toFixed(2)),
     collided: true,
@@ -361,7 +368,7 @@ export function executeSailTurn(state) {
   const foodCost = Math.round(baseFoodCost * (nextIsSpoiled ? 1.5 : 1.0));
   const nextFood = Math.max(0, state.food - foodCost);
 
-  const hullDamage = moveResult.collided ? (state.isFullSail ? 16 : 8) : 0;
+  const hullDamage = 0;
   const nextHull = Math.max(0, state.hull - hullDamage);
 
   const nearbyPort = findNearbyPort(moveResult.endLat, moveResult.endLon);
@@ -397,17 +404,21 @@ export function executeSailTurn(state) {
 
   const turnInfo = getTurnInfo(state.turn);
   const logTitle = moveResult.collided
-    ? `제${state.turn}턴 항해 · 연안 접촉 후 외해 이격 (${moveResult.actualCm.toFixed(1)} cm)`
+    ? moveResult.hitBoundary
+      ? `제${state.turn}턴 항해 · 해역 경계 도달 정지 (${moveResult.actualCm.toFixed(1)} cm)`
+      : moveResult.actualCm <= 0.05
+        ? `제${state.turn}턴 항해 · 육지에 가로막혀 이동 불가`
+        : `제${state.turn}턴 항해 · 육지에 닿아 정지 (${moveResult.actualCm.toFixed(1)} cm)`
     : `제${state.turn}턴 항해 완료 · 자로 ${planned.effectiveCm.toFixed(1)} cm 이동`;
 
   const blockedText =
     moveResult.blockedRanges.length > 0
-      ? ` · 막힌 방위: ${moveResult.blockedRanges.join(', ')}`
+      ? ` · 갈 수 없는 방위: ${moveResult.blockedRanges.join(', ')}`
       : '';
 
   const logDetail = `방위 ${String(planned.headingDeg).padStart(3, '0')}° · ${planned.windClass.label}${
     state.isFullSail ? '(전속)' : ''
-  } · 식량 -${foodCost}${hullDamage > 0 ? ` · 선체 -${hullDamage}` : ''}${blockedText}`;
+  } · 식량 -${foodCost}${blockedText}`;
 
   const nextState = {
     ...state,

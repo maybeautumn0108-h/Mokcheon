@@ -47,6 +47,7 @@ import {
   findVisiblePortLandmarks,
   finishActivityTurn,
   getNearbyFleets,
+  isDirectionImmediatelyBlocked,
   repairHull,
   resolveMovement,
   sellCargoItem,
@@ -85,18 +86,42 @@ test('Wind evaluation matches B4 ruler distances (1cm / 2cm / 3cm / 4cm + 1cm fu
   assert.equal(doldrums.moveCm, 2.0);
 });
 
-test('Sailing East directly into West Africa triggers oblique deflection and >= 1.8° offshore separation', () => {
+test('Sailing East directly into West Africa stops right at coastline with zero hull damage and warns on blocked heading', () => {
   const result = resolveMovement(10, -20, 90, 40);
   assert.equal(result.collided, true);
   assert.equal(isPointOnLand(result.endLat, result.endLon), false);
+  // No sideways oblique deflection or offshore push-back
+  assert.equal(result.endLat, 10);
 
-  const nearest = findNearestCoast(result.endLat, result.endLon, 10);
-  assert.ok(nearest, 'Should find nearby coast');
+  const nearest = findNearestCoast(result.endLat, result.endLon, 5);
+  assert.ok(nearest, 'Should rest right against nearby coast');
   assert.ok(
-    nearest.distDeg >= SAFE_OFFSHORE_DEG - 0.05,
-    `Expected >= ${SAFE_OFFSHORE_DEG}° offshore, got ${nearest.distDeg}`,
+    nearest.distDeg <= 0.3,
+    `Expected ship to stop touching coast (<= 0.3°), got ${nearest.distDeg}`,
   );
   assert.ok(result.blockedRanges.length > 0, 'Should report blocked azimuth ranges');
+
+  // Immediate ahead check warns for East (90°) at the stopped shoreline, clears for West (270°)
+  assert.equal(isDirectionImmediatelyBlocked(result.endLat, result.endLon, 90), true);
+  assert.equal(isDirectionImmediatelyBlocked(result.endLat, result.endLon, 270), false);
+
+  // Full sail turn hitting land inflicts 0 hull damage
+  const initial = { ...createInitialGameState(), lat: 10, lon: -20, headingDeg: 90, isFullSail: true };
+  const sailRes = executeSailTurn(initial);
+  assert.equal(sailRes.outcome.collided, true);
+  assert.equal(sailRes.outcome.hullDamage, 0);
+  assert.equal(sailRes.nextState.hull, 100);
+
+  // Sailing again into land from coastline stops at 0 cm with 0 hull damage
+  const blockedRetry = executeSailTurn({
+    ...sailRes.nextState,
+    turnStep: 'sail',
+    headingDeg: 90,
+  });
+  assert.equal(blockedRetry.outcome.collided, true);
+  assert.equal(blockedRetry.outcome.actualCm, 0);
+  assert.equal(blockedRetry.outcome.hullDamage, 0);
+  assert.equal(blockedRetry.nextState.hull, 100);
 });
 
 test('Coastal sightings detect land within 6.0° at Lisbon without exposing continent names', () => {

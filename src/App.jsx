@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Anchor,
   CheckCircle2,
   Clock,
@@ -41,6 +42,7 @@ import {
   finishActivityTurn,
   getNearbyFleets,
   holdPositionTurn,
+  isDirectionImmediatelyBlocked,
   repairHull,
   sellCargoItem,
 } from './engine/navigation.js';
@@ -668,6 +670,10 @@ export default function App() {
   );
 
   const windEval = useMemo(() => computePlannedMove(gameState), [gameState]);
+  const isBlockedAhead = useMemo(
+    () => isDirectionImmediatelyBlocked(gameState.lat, gameState.lon, gameState.headingDeg),
+    [gameState.lat, gameState.lon, gameState.headingDeg],
+  );
   const nearbyPort = useMemo(
     () => findNearbyPort(gameState.lat, gameState.lon),
     [gameState.lat, gameState.lon],
@@ -1568,6 +1574,7 @@ export default function App() {
                 nearbyPort={nearbyPort}
                 nearbyFleets={nearbyFleets}
                 weatherId={gameState.weatherId}
+                isBlockedAhead={isBlockedAhead}
               />
 
               {turnStep === 'activity' && gameState.status === 'active' ? (
@@ -1654,6 +1661,15 @@ export default function App() {
                   />
 
                   <div className="space-y-2 pt-0.5">
+                    {canSail && isBlockedAhead && (
+                      <div className="rounded-xl border border-amber-400/50 bg-amber-950/45 px-3 py-2 text-xs font-bold text-amber-200 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>
+                          현재 방위({String(gameState.headingDeg).padStart(3, '0')}°) 바로 앞은 육지(해안)입니다. 이 방향으로는 갈 수 없으니 방위를 돌려주세요!
+                        </span>
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       disabled={!canSail}

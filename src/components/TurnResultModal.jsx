@@ -24,7 +24,9 @@ export default function TurnResultModal({ outcome, onClose }) {
             </div>
             <h3 className="text-base font-black text-white mt-0.5">
               {outcome.collided
-                ? `제${outcome.completedTurn}턴 항해 완료! 연안 접촉 후 자로 ${outcome.actualCm.toFixed(1)} cm 이동`
+                ? outcome.actualCm <= 0.05
+                  ? `제${outcome.completedTurn}턴: 육지에 막혀 이 방향으로는 갈 수 없습니다 (0.0 cm)`
+                  : `제${outcome.completedTurn}턴: 육지에 닿아 자로 ${outcome.actualCm.toFixed(1)} cm 이동 후 정지`
                 : `제${outcome.completedTurn}턴 항해 완료! 자로 ${outcome.actualCm.toFixed(1)} cm 이동`}
             </h3>
           </div>
@@ -41,30 +43,35 @@ export default function TurnResultModal({ outcome, onClose }) {
           </div>
         </div>
 
-        {/* Collision Details (No continent names!) */}
+        {/* Coastal Stop Warning (No hull damage, no continent names!) */}
         {outcome.collided && (
-          <div className="mt-2.5 rounded-xl border border-rose-500/35 bg-rose-950/35 p-3 text-xs text-rose-200 space-y-1">
-            <div className="font-bold text-rose-300">
-              {outcome.hitBoundary
-                ? '항해도 경계에 도달하여 외해 안전 수역으로 복귀했습니다.'
-                : '미지의 해안선에 접촉하여 연안을 따라 비스듬히 빗겨간 뒤 외해(1.8°)로 자동 이격했습니다.'}
+          <div className="mt-2.5 rounded-xl border border-amber-500/45 bg-amber-950/40 p-3 text-xs text-amber-100 space-y-1.5">
+            <div className="font-bold text-amber-300 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>
+                {outcome.hitBoundary
+                  ? '항해도 경계에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없습니다.'
+                  : '육지(해안선)에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없으니 방위를 돌려주세요.'}
+              </span>
             </div>
             {outcome.blockedRanges.length > 0 && (
-              <div className="flex items-center gap-1.5 text-amber-200">
+              <div className="flex items-center gap-1.5 text-amber-200/95">
                 <Compass className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>
-                  막힌 방위각 범위: <strong>{outcome.blockedRanges.join(', ')}</strong> (개방 수역으로 우회하세요)
+                  갈 수 없는 방위각 범위: <strong>{outcome.blockedRanges.join(', ')}</strong>
                 </span>
               </div>
             )}
-            <div>선체 내구도 피해: -{outcome.hullDamage}</div>
+            {(outcome.hullDamage ?? 0) > 0 && (
+              <div className="text-rose-300 font-semibold">선체 내구도 피해: -{outcome.hullDamage}</div>
+            )}
           </div>
         )}
 
         {/* Spoilage Alert */}
         {outcome.newlySpoiled && (
           <div className="mt-2.5 rounded-xl border border-amber-500/40 bg-amber-950/40 p-2.5 text-xs text-amber-200">
-            <strong>식수 부패 및 괴혈병 발생!</strong> 연속 6턴 이상 기항지에 정박하지 않아 이후 기항 시까지 식량·식수 소모가 1.5배로 증가합니다.
+            <strong>식수 부패 및 괴혈병 발생!</strong> 연속 8턴 이상 기항지에 정박하지 않아 이후 기항 시까지 식량·식수 소모가 1.5배로 증가합니다.
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Anchor, CloudRain, Compass, Navigation, Radio } from 'lucide-react';
+import { AlertTriangle, Anchor, CloudRain, Compass, Navigation, Radio } from 'lucide-react';
 import { getCoastalSightings } from '../data/worldCoastlines.js';
 import { getWeatherById } from '../data/weather.js';
 import { COAST_SIGHT_RADIUS_DEG, FLEET_RADAR_RADIUS_DEG, findVisiblePortLandmarks } from '../engine/navigation.js';
@@ -65,6 +65,7 @@ export default function DeckView({
   nearbyPort,
   nearbyFleets = [],
   weatherId = 'clear',
+  isBlockedAhead = false,
 }) {
   const weather = useMemo(() => getWeatherById(weatherId), [weatherId]);
   const isStormy = weatherId === 'storm' || weatherId === 'squall';
@@ -175,15 +176,23 @@ export default function DeckView({
         )}
       </div>
 
-      {/* Nearby Rival Fleet Radar Alert (<= 2.5 cm / 25°) */}
-      {closestRival && (
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 pointer-events-none flex justify-center">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-sky-950/90 backdrop-blur-sm border border-sky-400/50 px-3 py-1 text-[11px] font-bold text-sky-200 shadow-lg">
-            <Radio className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-            <span>
-              {closestRival.sectorLabel} {closestRival.distCm.toFixed(1)} cm 거리에 [{closestRival.teamName}] 선단 포착!
-            </span>
-          </div>
+      {/* Bottom Viewport Alerts: Rival Fleet & Blocked Land Ahead */}
+      {(closestRival || isBlockedAhead) && (
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 pointer-events-none flex flex-col items-center gap-1">
+          {isBlockedAhead && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-950/90 backdrop-blur-sm border border-amber-400/60 px-3 py-1 text-[11px] font-bold text-amber-200 shadow-lg">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>정면이 육지에 막혀 이 방향으로는 갈 수 없습니다</span>
+            </div>
+          )}
+          {closestRival && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-sky-950/90 backdrop-blur-sm border border-sky-400/50 px-3 py-1 text-[11px] font-bold text-sky-200 shadow-lg">
+              <Radio className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+              <span>
+                {closestRival.sectorLabel} {closestRival.distCm.toFixed(1)} cm 거리에 [{closestRival.teamName}] 선단 포착!
+              </span>
+            </div>
+          )}
         </div>
       )}
 
