@@ -4,14 +4,19 @@ create table if not exists public.rooms (
   host_client_id text not null,
   phase text not null default 'waiting',
   current_turn integer not null default 1,
+  turn_phase text not null default 'sail_card',
   updated_at timestamptz not null default now()
 );
+
+alter table public.rooms
+  add column if not exists turn_phase text not null default 'sail_card';
 
 create table if not exists public.fleets (
   room_code text not null,
   client_id text not null,
   team_name text not null,
   turn integer not null default 1,
+  card_completed_turn integer not null default 0,
   completed_turn integer not null default 0,
   lat double precision not null,
   lon double precision not null,
@@ -26,6 +31,9 @@ create table if not exists public.fleets (
   updated_at timestamptz not null default now(),
   primary key (room_code, client_id)
 );
+
+alter table public.fleets
+  add column if not exists card_completed_turn integer not null default 0;
 
 alter table public.fleets
   add column if not exists completed_turn integer not null default 0;

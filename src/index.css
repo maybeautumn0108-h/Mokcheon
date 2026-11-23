@@ -38,6 +38,59 @@
   }
 }
 
+@keyframes duel-bob {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-2.5px);
+  }
+}
+
+@keyframes duel-clash-left {
+  0%, 100% {
+    transform: translateX(0px) rotate(0deg);
+  }
+  45% {
+    transform: translateX(8px) rotate(8deg);
+  }
+}
+
+@keyframes duel-clash-right {
+  0%, 100% {
+    transform: translateX(0px) rotate(0deg);
+  }
+  45% {
+    transform: translateX(-8px) rotate(-8deg);
+  }
+}
+
+@keyframes clash-spark {
+  0%, 100% {
+    transform: scale(0.6);
+    opacity: 0.25;
+  }
+  45% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+}
+
+@keyframes duel-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px) rotate(-0.6deg); }
+  40% { transform: translateX(5px) rotate(0.6deg); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+@keyframes battle-flash {
+  0% { opacity: 0; transform: scale(1.12); }
+  20% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96); }
+}
+
 .animate-wave-sway {
   animation: wave-sway 3.2s ease-in-out infinite;
 }
@@ -48,4 +101,28 @@
 
 .animate-sail-billow {
   animation: sail-billow 0.85s ease-in-out infinite;
+}
+
+.animate-duel-bob {
+  animation: duel-bob 1.2s ease-in-out infinite;
+}
+
+.animate-duel-clash-left {
+  animation: duel-clash-left 0.9s ease-in-out infinite;
+}
+
+.animate-duel-clash-right {
+  animation: duel-clash-right 0.9s ease-in-out infinite;
+}
+
+.animate-clash-spark {
+  animation: clash-spark 0.9s ease-in-out infinite;
+}
+
+.animate-duel-shake {
+  animation: duel-shake 0.42s ease-in-out;
+}
+
+.animate-battle-flash {
+  animation: battle-flash 0.95s ease-out forwards;
 }

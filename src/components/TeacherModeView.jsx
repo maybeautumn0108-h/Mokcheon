@@ -23,6 +23,7 @@ export default function TeacherModeView({
   fleets,
   onBackToStudent,
   onStartVoyage,
+  onForceOpenActivity,
   onForceNextTurn,
   onResetToWaiting,
   onClearRoom,
@@ -32,6 +33,10 @@ export default function TeacherModeView({
   const realFleets = fleets.filter((f) => !f.isDemo);
   const currentTurn = roomMeta?.currentTurn ?? 1;
   const phase = roomMeta?.phase ?? 'waiting';
+  const turnPhase = roomMeta?.turnPhase ?? 'sail_card';
+  const cardsReadyCount = realFleets.filter(
+    (f) => f.status !== 'active' || (f.cardCompletedTurn ?? 0) >= currentTurn,
+  ).length;
   const readyCount = realFleets.filter(
     (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= currentTurn,
   ).length;
@@ -62,7 +67,9 @@ export default function TeacherModeView({
                     ? '대기실'
                     : phase === 'finished'
                       ? '항해 종료'
-                      : `제${currentTurn}턴 진행 중 (${readyCount}/${realFleets.length}팀 완료)`}
+                      : turnPhase === 'sail_card'
+                        ? `제${currentTurn}턴 항해·카드 (${cardsReadyCount}/${realFleets.length}팀)`
+                        : `제${currentTurn}턴 주변활동 (${readyCount}/${realFleets.length}팀)`}
                 </strong>
               </div>
             </div>
@@ -77,6 +84,17 @@ export default function TeacherModeView({
               >
                 <Play className="w-4 h-4 fill-current" />
                 전원 출항 시작 (1턴)
+              </button>
+            )}
+
+            {phase === 'playing' && turnPhase === 'sail_card' && (
+              <button
+                type="button"
+                onClick={onForceOpenActivity}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-sky-400/50 bg-sky-500/20 hover:bg-sky-500/30 px-3.5 py-2 text-xs font-black text-sky-200 cursor-pointer"
+              >
+                <FastForward className="w-4 h-4" />
+                강제 3단계(주변활동) 열기
               </button>
             )}
 
@@ -277,7 +295,10 @@ export default function TeacherModeView({
             {fleets.map((fleet, idx) => {
               const color = FLEET_COLORS[idx % FLEET_COLORS.length];
               const isDoneThisTurn =
-                fleet.status !== 'active' || (fleet.completedTurn ?? 0) >= currentTurn;
+                fleet.status !== 'active' ||
+                (turnPhase === 'sail_card'
+                  ? (fleet.cardCompletedTurn ?? 0) >= currentTurn
+                  : (fleet.completedTurn ?? 0) >= currentTurn);
 
               return (
                 <div

@@ -26,6 +26,7 @@ export function createInitialGameState() {
   return {
     turn: 1,
     activeTurn: 1,
+    cardCompletedTurn: 0,
     completedTurn: 0,
     turnStep: 'sail', // 'sail' | 'card' | 'activity' | 'done'
     interactedThisTurn: false,
@@ -371,6 +372,7 @@ export function executeSailTurn(state) {
     ...state,
     turn: nextStatus === 'active' ? nextTurn : state.turn,
     activeTurn: state.turn,
+    cardCompletedTurn: nextStatus === 'active' ? state.cardCompletedTurn : state.turn,
     completedTurn: nextStatus === 'active' ? state.completedTurn : state.turn,
     turnStep: nextStatus === 'active' ? 'card' : 'done',
     interactedThisTurn: false,
@@ -436,6 +438,7 @@ export function holdPositionTurn(state) {
     ...state,
     turn: nextStatus === 'active' ? state.turn + 1 : state.turn,
     activeTurn: state.turn,
+    cardCompletedTurn: nextStatus === 'active' ? state.cardCompletedTurn : state.turn,
     completedTurn: nextStatus === 'active' ? state.completedTurn : state.turn,
     turnStep: nextStatus === 'active' ? 'card' : 'done',
     interactedThisTurn: false,
@@ -483,6 +486,7 @@ export function applySituationCardToState(state, card) {
   const nextState = {
     ...state,
     ...stateFields,
+    cardCompletedTurn: resolvedTurn,
     completedTurn: nextStatus === 'active' ? state.completedTurn : resolvedTurn,
     turnStep: nextStatus === 'active' ? 'activity' : 'done',
     status: nextStatus,
@@ -525,6 +529,7 @@ export function enterPortInActivity(state) {
     currentPortId: port.id,
     visitedPorts,
     completedTurn: isReturningHome ? resolvedTurn : state.completedTurn,
+    cardCompletedTurn: Math.max(state.cardCompletedTurn || 0, resolvedTurn),
     turnStep: isReturningHome ? 'done' : state.turnStep,
     status: isReturningHome ? 'returned' : state.status,
     logs: [
@@ -552,6 +557,7 @@ export function finishActivityTurn(state) {
 
   return {
     ...state,
+    cardCompletedTurn: Math.max(state.cardCompletedTurn || 0, resolvedTurn),
     completedTurn: resolvedTurn,
     turnStep: nextStatus === 'active' ? 'sail' : 'done',
     interactedThisTurn: false,
@@ -583,6 +589,7 @@ export function executeDockTurn(state) {
   const nextState = {
     ...state,
     turn: nextStatus === 'active' ? nextTurn : state.turn,
+    cardCompletedTurn: state.turn,
     completedTurn: state.turn,
     turnsWithoutPort: 0,
     isSpoiled: false,

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, Handshake, ShieldAlert, Swords, X } from 'lucide-react';
+import PlankDuelStage from './PlankDuelStage.jsx';
 import {
   BATTLE_STAKES,
   RPS_OPTIONS,
@@ -34,6 +35,19 @@ export default function InteractionModal({
   const [wantType, setWantType] = useState('food');
   const [wantAmount, setWantAmount] = useState(15);
   const [formError, setFormError] = useState(null);
+  const [showBattleFlash, setShowBattleFlash] = useState(false);
+
+  const activeBattleId =
+    activeInteraction?.type === 'battle' && activeInteraction?.status === 'active'
+      ? activeInteraction.id
+      : null;
+
+  useEffect(() => {
+    if (!activeBattleId) return;
+    setShowBattleFlash(true);
+    const t = setTimeout(() => setShowBattleFlash(false), 950);
+    return () => clearTimeout(t);
+  }, [activeBattleId]);
 
   // Case 1: Drafting a new Trade Proposal
   if (draftTradePeer && !activeInteraction) {
@@ -244,6 +258,9 @@ export default function InteractionModal({
 
   // Case 3: Battle Interaction (Best-of-3 Rock-Paper-Scissors)
   const myRole = isInitiator ? 'initiator' : 'target';
+  const myTeamName = isInitiator
+    ? activeInteraction.initiatorName
+    : activeInteraction.targetName;
   const myWins = isInitiator ? payload.initiatorWins : payload.targetWins;
   const peerWins = isInitiator ? payload.targetWins : payload.initiatorWins;
   const myChoice = isInitiator ? payload.initiatorChoice : payload.targetChoice;
@@ -252,17 +269,43 @@ export default function InteractionModal({
   const iWonBattle = payload.winnerRole === myRole;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/85 backdrop-blur-sm p-3">
-      <div className="w-full max-w-md rounded-2xl border border-rose-500/50 bg-slate-900 p-4 shadow-2xl space-y-3">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/90 backdrop-blur-sm p-3 overflow-y-auto">
+      {/* Dramatic Screen Transition Flash when Duel Begins */}
+      {showBattleFlash && (
+        <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-rose-950/80 animate-battle-flash">
+          <div className="text-center space-y-1 px-6 py-4 rounded-2xl border-2 border-amber-400 bg-slate-950/95 shadow-2xl">
+            <div className="text-3xl">⚔️</div>
+            <div className="text-xl font-black text-amber-300 tracking-wide">
+              접현 돌격! 선상 결투 개시!
+            </div>
+            <div className="text-xs font-bold text-rose-200">
+              널빤지 위 가위바위보 3판 2선승 승부
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="w-full max-w-md rounded-2xl border border-rose-500/50 bg-slate-900 p-4 shadow-2xl space-y-3 my-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-black text-rose-300 flex items-center gap-1.5">
             <Swords className="w-5 h-5" />
-            해상 전투 · 가위바위보 (3판 2선승)
+            해상 전투 · 널빤지 결투 (3판 2선승)
           </h3>
           <span className="rounded-full bg-rose-500/15 border border-rose-400/40 px-2 py-0.5 text-[10px] font-bold text-rose-200">
             승리 +{BATTLE_STAKES.lootGold}G / +식량{BATTLE_STAKES.lootFood}
           </span>
         </div>
+
+        {/* Animated Pirate Plank Duel Stage */}
+        <PlankDuelStage
+          myWins={myWins}
+          peerWins={peerWins}
+          status={status}
+          iWon={iWonBattle}
+          roundCount={history.length}
+          myTeamName={myTeamName}
+          peerName={peerName}
+        />
 
         {/* Scoreboard */}
         <div className="grid grid-cols-3 items-center rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-center">

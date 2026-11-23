@@ -16,7 +16,10 @@ import {
   measureWithSway,
 } from './quadrant.js';
 import { getWeatherById, rollWeather } from '../data/weather.js';
-import { areAllFleetsReadyForNextTurn } from './fleetSync.js';
+import {
+  areAllFleetsCardsReady,
+  areAllFleetsReadyForNextTurn,
+} from './fleetSync.js';
 import {
   advanceBattleState,
   applyBattleToState,
@@ -297,11 +300,34 @@ test('3-step turn flow (1. Sail -> 2. Card -> 3. Activity) tracks turnStep and c
   assert.equal(s1.turnStep, 'card');
   assert.equal(s1.completedTurn, 0);
 
-  // Step 2: Pick Situation Card -> turnStep becomes 'activity', completedTurn still 0
+  // Step 2: Pick Situation Card -> turnStep becomes 'activity', cardCompletedTurn = 1, completedTurn still 0
   const cardRes = applySituationCardToState(s1, SITUATION_CARDS[0]);
   s1 = cardRes.nextState;
   assert.equal(s1.turnStep, 'activity');
+  assert.equal(s1.cardCompletedTurn, 1);
   assert.equal(s1.completedTurn, 0);
+
+  // Barrier 1: Step 3 does not open until all active fleets complete Step 2 (cards)
+  assert.equal(
+    areAllFleetsCardsReady(
+      [
+        { clientId: 'a', status: 'active', cardCompletedTurn: 1 },
+        { clientId: 'b', status: 'active', cardCompletedTurn: 0 },
+      ],
+      1,
+    ),
+    false,
+  );
+  assert.equal(
+    areAllFleetsCardsReady(
+      [
+        { clientId: 'a', status: 'active', cardCompletedTurn: 1 },
+        { clientId: 'b', status: 'active', cardCompletedTurn: 1 },
+      ],
+      1,
+    ),
+    true,
+  );
 
   // Step 3: Finish Activity -> Turn 1 is finalized and turnStep resets to 'sail'
   s1 = finishActivityTurn(s1);

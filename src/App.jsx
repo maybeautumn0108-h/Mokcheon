@@ -51,6 +51,7 @@ import {
   createInitialBattlePayload,
 } from './engine/interactions.js';
 import {
+  areAllFleetsCardsReady,
   areAllFleetsReadyForNextTurn,
   clearLocalGameState,
   clearRoomInSupabase,
@@ -70,6 +71,7 @@ import {
   savePlayerToRoom,
   subscribeToRoomAndFleetsSupabase,
   tryAdvanceRoomTurnSupabase,
+  tryOpenActivityPhaseSupabase,
   updateInteractionSupabase,
   updateRoomInSupabase,
   upsertPlayerToSupabase,
@@ -136,6 +138,7 @@ export default function App() {
     hostClientId: clientId,
     phase: 'waiting',
     currentTurn: 1,
+    turnPhase: 'sail_card',
   });
   const [interactions, setInteractions] = useState([]);
   const [draftTradePeer, setDraftTradePeer] = useState(null);
@@ -146,6 +149,7 @@ export default function App() {
   const sailTimerRef = useRef(null);
   const channelRef = useRef(null);
   const prevRoomTurnRef = useRef(1);
+  const prevRoomTurnPhaseRef = useRef('sail_card');
   const appliedInteractionIdsRef = useRef(new Set());
 
   const cleanRoom = roomCode.trim() || 'HIST-101';
@@ -229,6 +233,7 @@ export default function App() {
       clientId,
       teamName: teamName.trim() || '탐험 선단',
       turn: gameState.turn,
+      cardCompletedTurn: gameState.cardCompletedTurn ?? 0,
       completedTurn: gameState.completedTurn ?? 0,
       lat: gameState.lat,
       lon: gameState.lon,
@@ -259,6 +264,7 @@ export default function App() {
     cleanRoom,
     teamName,
     gameState.turn,
+    gameState.cardCompletedTurn,
     gameState.completedTurn,
     gameState.lat,
     gameState.lon,
@@ -287,6 +293,7 @@ export default function App() {
       setLocalDemoInteraction(null);
       setGameState(createInitialGameState());
       prevRoomTurnRef.current = 1;
+      prevRoomTurnPhaseRef.current = 'sail_card';
       return;
     }
 
@@ -298,11 +305,35 @@ export default function App() {
     ) {
       setPlayMode('online');
       prevRoomTurnRef.current = roomMeta.currentTurn;
+      prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
       return;
+    }
+
+    if (
+      playMode === 'online' &&
+      roomMeta.turnPhase === 'activity' &&
+      prevRoomTurnPhaseRef.current !== 'activity'
+    ) {
+      prevRoomTurnPhaseRef.current = 'activity';
+      setTurnToast('전원 카드 완료! 3단계 주변활동(기항지·교역·전투)이 열렸습니다!');
+      setTurnOutcome(null);
+      setDrawnCards(null);
+      setGameState((prev) => {
+        if (prev.status !== 'active' || prev.turnStep === 'activity') return prev;
+        // Catch up lagging player if host forced Step 3 open
+        return {
+          ...prev,
+          activeTurn: roomMeta.currentTurn,
+          turn: roomMeta.currentTurn + 1,
+          cardCompletedTurn: Math.max(prev.cardCompletedTurn ?? 0, roomMeta.currentTurn),
+          turnStep: 'activity',
+        };
+      });
     }
 
     if (playMode === 'online' && roomMeta.currentTurn > prevRoomTurnRef.current) {
       prevRoomTurnRef.current = roomMeta.currentTurn;
+      prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
       setTurnToast(`제${roomMeta.currentTurn}턴이 시작되었습니다!`);
       setGameState((prev) => {
         if (prev.status !== 'active' || prev.turn >= roomMeta.currentTurn) return prev;
@@ -310,6 +341,7 @@ export default function App() {
           ...prev,
           turn: roomMeta.currentTurn,
           activeTurn: roomMeta.currentTurn,
+          cardCompletedTurn: Math.max(prev.cardCompletedTurn ?? 0, roomMeta.currentTurn - 1),
           completedTurn: Math.max(prev.completedTurn ?? 0, roomMeta.currentTurn - 1),
           turnStep: 'sail',
           interactedThisTurn: false,
@@ -320,6 +352,7 @@ export default function App() {
     isOnlineSession,
     roomMeta.phase,
     roomMeta.currentTurn,
+    roomMeta.turnPhase,
     playMode,
     joinedLobbyRoom,
     isSpectatorHost,
@@ -336,9 +369,38 @@ export default function App() {
     [roomPeersMap],
   );
 
-  // Auto-advance room turn when ALL active fleets have completed current room turn
+  // Barrier 1: Auto-open Step 3 (activity phase) once ALL active fleets complete Step 1+2 (sail & card)
   useEffect(() => {
-    if (!isOnlineSession || roomMeta.phase !== 'playing') return;
+    if (
+      !isOnlineSession ||
+      roomMeta.phase !== 'playing' ||
+      roomMeta.turnPhase !== 'sail_card'
+    ) {
+      return;
+    }
+    if (!areAllFleetsCardsReady(realFleets, roomMeta.currentTurn)) return;
+
+    if (isSupabaseConfigured) {
+      tryOpenActivityPhaseSupabase(cleanRoom, roomMeta.currentTurn, realFleets);
+    } else {
+      const nextMeta = saveLocalRoomMeta(cleanRoom, {
+        ...roomMeta,
+        turnPhase: 'activity',
+      });
+      setRoomMeta(nextMeta);
+      channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
+    }
+  }, [isOnlineSession, roomMeta, realFleets, cleanRoom]);
+
+  // Barrier 2: Auto-advance room turn when ALL active fleets have completed Step 3
+  useEffect(() => {
+    if (
+      !isOnlineSession ||
+      roomMeta.phase !== 'playing' ||
+      roomMeta.turnPhase !== 'activity'
+    ) {
+      return;
+    }
     if (!areAllFleetsReadyForNextTurn(realFleets, roomMeta.currentTurn)) return;
 
     if (isSupabaseConfigured) {
@@ -348,6 +410,7 @@ export default function App() {
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
         ...roomMeta,
         currentTurn: isFinal ? MAX_TURNS : roomMeta.currentTurn + 1,
+        turnPhase: 'sail_card',
         phase: isFinal ? 'finished' : 'playing',
       });
       setRoomMeta(nextMeta);
@@ -437,6 +500,12 @@ export default function App() {
 
   const isHost = roomMeta?.hostClientId === clientId;
   const turnStep = gameState.turnStep || 'sail';
+  const isWaitingForActivityOpen =
+    playMode === 'online' &&
+    gameState.status === 'active' &&
+    turnStep === 'activity' &&
+    roomMeta.turnPhase === 'sail_card';
+
   const isWaitingForOthers =
     playMode === 'online' &&
     gameState.status === 'active' &&
@@ -520,6 +589,7 @@ export default function App() {
       const updated = await updateRoomInSupabase(cleanRoom, {
         phase: 'playing',
         currentTurn: 1,
+        turnPhase: 'sail_card',
       });
       if (updated) setRoomMeta(updated);
     } else {
@@ -527,6 +597,7 @@ export default function App() {
         ...roomMeta,
         phase: 'playing',
         currentTurn: 1,
+        turnPhase: 'sail_card',
       });
       setRoomMeta(nextMeta);
       channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
@@ -534,6 +605,23 @@ export default function App() {
     if (!isSpectatorHost) {
       setPlayMode('online');
       prevRoomTurnRef.current = 1;
+      prevRoomTurnPhaseRef.current = 'sail_card';
+    }
+  };
+
+  const handleForceOpenActivity = async () => {
+    if (isSupabaseConfigured) {
+      const updated = await updateRoomInSupabase(cleanRoom, {
+        turnPhase: 'activity',
+      });
+      if (updated) setRoomMeta(updated);
+    } else {
+      const nextMeta = saveLocalRoomMeta(cleanRoom, {
+        ...roomMeta,
+        turnPhase: 'activity',
+      });
+      setRoomMeta(nextMeta);
+      channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
     }
   };
 
@@ -544,6 +632,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const updated = await updateRoomInSupabase(cleanRoom, {
         currentTurn: nextTurn,
+        turnPhase: 'sail_card',
         phase: nextPhase,
       });
       if (updated) setRoomMeta(updated);
@@ -551,6 +640,7 @@ export default function App() {
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
         ...roomMeta,
         currentTurn: nextTurn,
+        turnPhase: 'sail_card',
         phase: nextPhase,
       });
       setRoomMeta(nextMeta);
@@ -564,6 +654,7 @@ export default function App() {
       const updated = await updateRoomInSupabase(cleanRoom, {
         phase: 'waiting',
         currentTurn: 1,
+        turnPhase: 'sail_card',
       });
       if (updated) setRoomMeta(updated);
       setRoomPeersMap({});
@@ -575,6 +666,7 @@ export default function App() {
         ...roomMeta,
         phase: 'waiting',
         currentTurn: 1,
+        turnPhase: 'sail_card',
       });
       setRoomPeersMap({});
       setInteractions([]);
@@ -896,6 +988,7 @@ export default function App() {
           if (isSpectatorHost) setPlayMode('lobby');
         }}
         onStartVoyage={handleHostStartVoyage}
+        onForceOpenActivity={handleForceOpenActivity}
         onForceNextTurn={handleForceNextTurn}
         onResetToWaiting={handleResetToWaiting}
         onClearRoom={handleClearRoom}
@@ -926,6 +1019,9 @@ export default function App() {
   }
 
   const endMeta = END_MESSAGES[gameState.status];
+  const cardsReadyCount = realFleets.filter(
+    (f) => f.status !== 'active' || (f.cardCompletedTurn ?? 0) >= roomMeta.currentTurn,
+  ).length;
   const readyCount = realFleets.filter(
     (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= roomMeta.currentTurn,
   ).length;
@@ -1089,18 +1185,72 @@ export default function App() {
               />
 
               {turnStep === 'activity' && gameState.status === 'active' ? (
-                <ActivityStepPanel
-                  activeTurn={gameState.activeTurn || Math.max(1, gameState.turn - 1)}
-                  nearbyPort={nearbyPort}
-                  isDocked={gameState.isDocked}
-                  nearbyFleets={nearbyFleets}
-                  interactedThisTurn={Boolean(gameState.interactedThisTurn)}
-                  onEnterPort={handleEnterPort}
-                  onOpenTradeShop={() => setActiveTab('log')}
-                  onStartTrade={(peer) => setDraftTradePeer(peer)}
-                  onStartBattle={handleStartBattle}
-                  onFinishTurn={handleFinishActivity}
-                />
+                isWaitingForActivityOpen ? (
+                  <section className="rounded-2xl border border-sky-400/50 bg-sky-950/45 p-4 space-y-3 shadow-lg">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-black text-sky-200">
+                        <Clock className="w-4 h-4 text-sky-400 animate-pulse" />
+                        <span>
+                          2단계(카드) 완료! 전원 카드 완료 후 3단계 동시 개방 ({cardsReadyCount}/
+                          {Math.max(1, realFleets.length)}팀)
+                        </span>
+                      </div>
+                      {isHost && (
+                        <button
+                          type="button"
+                          onClick={handleForceOpenActivity}
+                          className="inline-flex items-center gap-1 rounded-lg bg-sky-500 hover:bg-sky-400 px-2 py-1 text-[10px] font-black text-slate-950 cursor-pointer"
+                        >
+                          <FastForward className="w-3 h-3" />
+                          강제 개방
+                        </button>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      모든 선단이 이번 턴 항해와 상황 카드 선택을 마쳐야 정확한 선박 위치가 확정되어
+                      3단계(기항지 방문·선박 교역/전투)가 동시에 열립니다.
+                    </p>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {realFleets.map((f) => {
+                        const cardDone =
+                          f.status !== 'active' ||
+                          (f.cardCompletedTurn ?? 0) >= roomMeta.currentTurn;
+                        return (
+                          <span
+                            key={f.clientId}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                              cardDone
+                                ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200'
+                                : 'border-slate-700 bg-slate-900 text-slate-300'
+                            }`}
+                          >
+                            {cardDone ? (
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Clock className="w-3 h-3 text-sky-400" />
+                            )}
+                            {f.teamName}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : (
+                  <ActivityStepPanel
+                    activeTurn={gameState.activeTurn || Math.max(1, gameState.turn - 1)}
+                    nearbyPort={nearbyPort}
+                    isDocked={gameState.isDocked}
+                    nearbyFleets={nearbyFleets}
+                    interactedThisTurn={Boolean(gameState.interactedThisTurn)}
+                    onEnterPort={handleEnterPort}
+                    onOpenTradeShop={() => setActiveTab('log')}
+                    onStartTrade={(peer) => setDraftTradePeer(peer)}
+                    onStartBattle={handleStartBattle}
+                    onFinishTurn={handleFinishActivity}
+                  />
+                )
               ) : (
                 <>
                   <HelmWheel

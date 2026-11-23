@@ -98,6 +98,7 @@ export function loadLocalRoomMeta(roomCode, fallbackHostId) {
     hostClientId: fallbackHostId || 'local-host',
     phase: 'waiting',
     currentTurn: 1,
+    turnPhase: 'sail_card',
   };
 }
 
@@ -115,6 +116,7 @@ function rowToFleet(row) {
     clientId: row.client_id,
     teamName: row.team_name,
     turn: row.turn,
+    cardCompletedTurn: row.card_completed_turn ?? 0,
     completedTurn: row.completed_turn ?? 0,
     lat: row.lat,
     lon: row.lon,
@@ -137,6 +139,7 @@ function rowToRoom(row) {
     hostClientId: row.host_client_id,
     phase: row.phase || 'waiting',
     currentTurn: row.current_turn ?? 1,
+    turnPhase: row.turn_phase || 'sail_card',
     updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   };
 }
@@ -160,6 +163,7 @@ export async function fetchOrCreateRoomSupabase(roomCode, clientId) {
     host_client_id: clientId,
     phase: 'waiting',
     current_turn: 1,
+    turn_phase: 'sail_card',
     updated_at: new Date().toISOString(),
   };
 
@@ -186,6 +190,7 @@ export async function fetchOrCreateRoomSupabase(roomCode, clientId) {
     hostClientId: clientId,
     phase: 'waiting',
     currentTurn: 1,
+    turnPhase: 'sail_card',
   };
 }
 
@@ -196,6 +201,7 @@ export async function updateRoomInSupabase(roomCode, patch) {
   };
   if (patch.phase !== undefined) dbPatch.phase = patch.phase;
   if (patch.currentTurn !== undefined) dbPatch.current_turn = patch.currentTurn;
+  if (patch.turnPhase !== undefined) dbPatch.turn_phase = patch.turnPhase;
   if (patch.hostClientId !== undefined) dbPatch.host_client_id = patch.hostClientId;
 
   const { data, error } = await supabase
@@ -210,6 +216,41 @@ export async function updateRoomInSupabase(roomCode, patch) {
     return null;
   }
   return rowToRoom(data);
+}
+
+export function areAllFleetsCardsReady(fleets, currentTurn) {
+  const realFleets = (fleets || []).filter((f) => !f.isDemo);
+  if (realFleets.length === 0) return false;
+  return realFleets.every(
+    (f) => f.status !== 'active' || (f.cardCompletedTurn ?? 0) >= currentTurn,
+  );
+}
+
+/**
+ * Atomically open Step 3 (activity phase) once all active fleets have finished Step 1+2 (sail & card).
+ */
+export async function tryOpenActivityPhaseSupabase(roomCode, currentTurn, fleets) {
+  if (!supabase || !roomCode) return false;
+  if (!areAllFleetsCardsReady(fleets, currentTurn)) return false;
+
+  const { data, error } = await supabase
+    .from('rooms')
+    .update({
+      turn_phase: 'activity',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('room_code', roomCode)
+    .eq('phase', 'playing')
+    .eq('current_turn', currentTurn)
+    .eq('turn_phase', 'sail_card')
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[Supabase] open activity phase error:', error.message);
+    return false;
+  }
+  return Boolean(data);
 }
 
 /**
@@ -239,6 +280,7 @@ export async function tryAdvanceRoomTurnSupabase(roomCode, currentTurn, fleets) 
     .update({
       current_turn: nextTurn,
       phase: nextPhase,
+      turn_phase: 'sail_card',
       updated_at: new Date().toISOString(),
     })
     .eq('room_code', roomCode)
@@ -281,6 +323,7 @@ export async function upsertPlayerToSupabase(roomCode, playerPayload) {
       client_id: playerPayload.clientId,
       team_name: playerPayload.teamName,
       turn: playerPayload.turn,
+      card_completed_turn: playerPayload.cardCompletedTurn ?? 0,
       completed_turn: playerPayload.completedTurn ?? 0,
       lat: playerPayload.lat,
       lon: playerPayload.lon,
