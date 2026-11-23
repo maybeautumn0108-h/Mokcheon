@@ -1,6 +1,7 @@
 import React from 'react';
 import { Anchor, Coins, Droplets, HeartPulse, Package, ScrollText, ShoppingBag } from 'lucide-react';
 import { REPAIR_AMOUNT, REPAIR_COST, RESUPPLY_COST, getPortById } from '../data/ports.js';
+import VoyageTrailMap from './VoyageTrailMap.jsx';
 
 export default function TradeLogTab({
   state,
@@ -17,6 +18,9 @@ export default function TradeLogTab({
 
   return (
     <div className="space-y-3">
+      {/* Reveal full voyage trail on B4 map once voyage has ended */}
+      {state.status !== 'active' && <VoyageTrailMap state={state} />}
+
       {/* Port Shop (Active when docked) */}
       <section className="rounded-2xl border border-amber-500/30 bg-slate-900/95 p-3.5 shadow-lg">
         <div className="flex items-center justify-between gap-2 mb-2">

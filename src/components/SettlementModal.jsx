@@ -1,7 +1,9 @@
-import React from 'react';
-import { Award, Coins, Flag, RotateCcw, Ship } from 'lucide-react';
+import React, { useState } from 'react';
+import { Award, Coins, Flag, Map, RotateCcw, ScrollText } from 'lucide-react';
+import VoyageTrailMap from './VoyageTrailMap.jsx';
 
 export default function SettlementModal({ settlement, state, canReset = true, onReset, onClose }) {
+  const [viewTab, setViewTab] = useState('trail'); // 'trail' | 'summary'
   if (!settlement) return null;
 
   const isSuccess = settlement.outcomeType === 'returned';
@@ -44,8 +46,47 @@ export default function SettlementModal({ settlement, state, canReset = true, on
           </span>
         </div>
 
-        {/* Financial Breakdown */}
-        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/80 p-3 space-y-2 text-xs">
+        {/* Toggle Tabs: Route Comparison Map vs Settlement Breakdown */}
+        <div className="grid grid-cols-2 gap-1.5 mt-3 rounded-xl bg-slate-950 p-1 border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setViewTab('trail')}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-black transition cursor-pointer ${
+              viewTab === 'trail'
+                ? 'bg-amber-500 text-slate-950'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Map className="w-3.5 h-3.5" />
+            내 항해 경로 비교
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewTab('summary')}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-black transition cursor-pointer ${
+              viewTab === 'summary'
+                ? 'bg-amber-500 text-slate-950'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <ScrollText className="w-3.5 h-3.5" />
+            최종 정산 내역
+          </button>
+        </div>
+
+        {viewTab === 'trail' ? (
+          <div className="mt-3 space-y-2">
+            <VoyageTrailMap state={state} />
+            <div className="rounded-xl border border-amber-500/30 bg-slate-950/80 px-3 py-2 flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-300">최종 정산 점수</span>
+              <span className="text-base font-black text-amber-300 tabular-nums">
+                {settlement.totalScore} 점
+              </span>
+            </div>
+          </div>
+        ) : (
+          /* Financial Breakdown */
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/80 p-3 space-y-2 text-xs">
           <div className="flex items-center justify-between">
             <span className="text-slate-400">남은 금화</span>
             <span className="font-bold text-slate-200 tabular-nums">
@@ -99,6 +140,7 @@ export default function SettlementModal({ settlement, state, canReset = true, on
             </span>
           </div>
         </div>
+        )}
 
         <div className={`mt-3.5 grid gap-2 ${canReset ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <button
