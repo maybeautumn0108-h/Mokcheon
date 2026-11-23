@@ -24,6 +24,7 @@ import TeacherModeView from './components/TeacherModeView.jsx';
 import LobbyView from './components/LobbyView.jsx';
 import ActivityStepPanel from './components/ActivityStepPanel.jsx';
 import InteractionModal from './components/InteractionModal.jsx';
+import TurnTransitionOverlay from './components/TurnTransitionOverlay.jsx';
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { MAX_TURNS, getTurnInfo } from './data/calendar.js';
 import {
@@ -153,8 +154,10 @@ export default function App() {
   const [dismissedInteractionIds, setDismissedInteractionIds] = useState(() => new Set());
   const [isTeacherMode, setIsTeacherMode] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [turnTransition, setTurnTransition] = useState(null);
 
   const sailTimerRef = useRef(null);
+  const turnAnimTimerRef = useRef(null);
   const channelRef = useRef(null);
   const sendPingRef = useRef(() => {});
   const prevRoomTurnRef = useRef(1);
@@ -168,8 +171,17 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (sailTimerRef.current) clearTimeout(sailTimerRef.current);
+      if (turnAnimTimerRef.current) clearTimeout(turnAnimTimerRef.current);
     };
   }, []);
+
+  const triggerTurnTransition = (turnNumber) => {
+    if (turnAnimTimerRef.current) clearTimeout(turnAnimTimerRef.current);
+    setTurnTransition({ turn: turnNumber, key: `${turnNumber}-${Date.now()}` });
+    turnAnimTimerRef.current = setTimeout(() => {
+      setTurnTransition(null);
+    }, 2200);
+  };
 
   useEffect(() => {
     saveLocalGameState(gameState, {
@@ -383,6 +395,9 @@ export default function App() {
       setPlayMode('online');
       prevRoomTurnRef.current = roomMeta.currentTurn;
       prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
+      if (roomMeta.phase === 'playing') {
+        triggerTurnTransition(roomMeta.currentTurn);
+      }
       return;
     }
 
@@ -411,6 +426,7 @@ export default function App() {
     if (playMode === 'online' && roomMeta.currentTurn > prevRoomTurnRef.current) {
       prevRoomTurnRef.current = roomMeta.currentTurn;
       prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
+      triggerTurnTransition(roomMeta.currentTurn);
       setTurnToast(`제${roomMeta.currentTurn}턴이 시작되었습니다!`);
       setTurnOutcome(null);
       setDrawnCards(null);
@@ -663,6 +679,7 @@ export default function App() {
     setPlayMode('solo');
     setGameState(createInitialGameState());
     setActiveTab('helm');
+    triggerTurnTransition(1);
   };
 
   const handleLeaveToLobby = async () => {
@@ -899,6 +916,8 @@ export default function App() {
       const next = finishActivityTurn(prev);
       if (next.status !== 'active') {
         setShowSettlement(true);
+      } else if (playMode === 'solo') {
+        triggerTurnTransition(next.turn);
       }
       return next;
     });
@@ -1519,6 +1538,7 @@ export default function App() {
           onClose={() => setShowSettlement(false)}
         />
       )}
+      <TurnTransitionOverlay transition={turnTransition} />
     </div>
   );
 }

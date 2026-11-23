@@ -172,15 +172,15 @@ export default function FleetTab({
         </label>
       </section>
 
-      {/* Nearby Radar (<= 2.5 cm / 25°) */}
+      {/* Nearby Radar (<= 1.0 cm / 10°, 1 grid square) */}
       <section className="rounded-2xl border border-sky-500/30 bg-slate-900/90 p-3.5">
         <h3 className="text-xs font-bold text-sky-300 flex items-center gap-1.5 mb-2">
           <Radio className="w-4 h-4" />
-          근접 선단 레이더 (반경 2.5 cm / 25° 이내)
+          근접 선단 레이더 (반경 1.0 cm / 격자 1칸 이내)
         </h3>
         {nearbyFleets.length === 0 ? (
           <div className="text-xs text-slate-400">
-            현재 반경 2.5 cm 이내에 포착된 다른 선단이 없습니다.
+            현재 반경 1.0 cm(10°) 이내에 포착된 다른 선단이 없습니다.
           </div>
         ) : (
           <div className="space-y-1.5">

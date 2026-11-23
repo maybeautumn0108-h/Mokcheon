@@ -231,14 +231,15 @@ test('Port shop resupply, hull repair, cargo purchase/sale, and final settlement
   assert.equal(afterSell.gold, state.gold + 200);
 });
 
-test('Fleet proximity radar detects peers within 2.5 cm (25°) and ignores distant ones', () => {
+test('Fleet proximity radar detects peers within 1.0 cm (10°, 1 grid square) and ignores distant ones', () => {
   const nearby = getNearbyFleets(30, -20, 180, [
-    { clientId: 'near', teamName: '가까운선단', lat: 20, lon: -20 }, // 10° due South (ahead) = 1.0 cm
-    { clientId: 'far', teamName: '먼선단', lat: -10, lon: 10 }, // > 25°
+    { clientId: 'near', teamName: '가까운선단', lat: 21, lon: -20 }, // 9° due South (ahead) = 0.9 cm
+    { clientId: 'outside', teamName: '약간먼선단', lat: 18, lon: -20 }, // 12° = 1.2 cm (> 1.0 cm)
+    { clientId: 'far', teamName: '먼선단', lat: -10, lon: 10 },
   ]);
   assert.equal(nearby.length, 1);
   assert.equal(nearby[0].clientId, 'near');
-  assert.equal(nearby[0].distCm, 1.0);
+  assert.equal(nearby[0].distCm, 0.9);
   assert.equal(nearby[0].sectorLabel, '정면');
 });
 

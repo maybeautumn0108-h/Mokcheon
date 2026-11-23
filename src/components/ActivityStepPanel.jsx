@@ -68,12 +68,12 @@ export default function ActivityStepPanel({
         )}
       </div>
 
-      {/* Nearby Ship Interactions (within 2.5 cm / 25°) */}
+      {/* Nearby Ship Interactions (within 1.0 cm / 10°, 1 grid square) */}
       <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-3 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
             <Ship className="w-4 h-4 text-sky-400" />
-            인접 선박 상호작용 (반경 2.5 cm)
+            인접 선박 상호작용 (반경 1.0 cm · 격자 1칸)
           </span>
           {interactedThisTurn && (
             <span className="text-[10px] font-bold text-emerald-300">이번 턴 상호작용 완료</span>
@@ -82,7 +82,7 @@ export default function ActivityStepPanel({
 
         {nearbyFleets.length === 0 ? (
           <div className="text-[11px] text-slate-400">
-            반경 2.5 cm 이내에 인접한 다른 선단이 없습니다.
+            반경 1.0 cm(10°) 이내에 인접한 다른 선단이 없습니다.
           </div>
         ) : (
           <div className="space-y-2">

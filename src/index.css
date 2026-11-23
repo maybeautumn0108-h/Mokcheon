@@ -91,6 +91,28 @@
   100% { opacity: 0; transform: scale(0.96); }
 }
 
+@keyframes turn-curtain {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes turn-title-rise {
+  0% { opacity: 0; transform: translateY(10px) scale(0.96); }
+  22% { opacity: 1; transform: translateY(0) scale(1); }
+  78% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-6px) scale(1.02); }
+}
+
+.animate-turn-curtain {
+  animation: turn-curtain 2.2s ease-in-out forwards;
+}
+
+.animate-turn-title-rise {
+  animation: turn-title-rise 2.2s ease-in-out forwards;
+}
+
 .animate-wave-sway {
   animation: wave-sway 3.2s ease-in-out infinite;
 }

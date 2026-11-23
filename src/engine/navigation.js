@@ -19,7 +19,7 @@ import { rollWeather } from '../data/weather.js';
 
 export const SAFE_OFFSHORE_DEG = 1.8;
 export const COAST_SIGHT_RADIUS_DEG = 6.0;
-export const FLEET_RADAR_RADIUS_DEG = 25.0; // 2.5 cm on B4 map
+export const FLEET_RADAR_RADIUS_DEG = 10.0; // 1.0 cm (1 grid square) on B4 map
 export const SPOILAGE_THRESHOLD_TURNS = 6;
 
 export function createInitialGameState() {
