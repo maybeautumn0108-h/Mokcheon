@@ -1,6 +1,8 @@
 import React from 'react';
-import { Anchor, Coins, Droplets, HeartPulse, Package, ScrollText, ShoppingBag } from 'lucide-react';
+import { Anchor, CheckCircle2, Circle, Coins, Droplets, Flag, HeartPulse, Package, ScrollText, ShoppingBag } from 'lucide-react';
 import { REPAIR_AMOUNT, REPAIR_COST, RESUPPLY_COST, getPortById } from '../data/ports.js';
+import { evaluateMissionProgress, getMissionById } from '../data/missions.js';
+import { MAX_FOOD } from '../engine/navigation.js';
 import VoyageTrailMap from './VoyageTrailMap.jsx';
 
 export default function TradeLogTab({
@@ -10,6 +12,8 @@ export default function TradeLogTab({
   onBuySpecialty,
   onSellCargo,
 }) {
+  const mission = getMissionById(state.missionId);
+  const progress = evaluateMissionProgress(state, mission.id);
   const dockedPort = state.isDocked && state.currentPortId ? getPortById(state.currentPortId) : null;
   const expectedCargoPayout = state.cargo.reduce(
     (sum, item) => sum + Math.round(item.buyPrice * item.multiplier),
@@ -20,6 +24,31 @@ export default function TradeLogTab({
     <div className="space-y-3">
       {/* Reveal full voyage trail on B4 map once voyage has ended */}
       {state.status !== 'active' && <VoyageTrailMap state={state} />}
+
+      {/* Current Mission Checklist */}
+      <section className="rounded-2xl border border-sky-500/30 bg-slate-900/90 p-3.5 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-black text-sky-300 flex items-center gap-1.5">
+            <Flag className="w-3.5 h-3.5 text-amber-400" />
+            {mission.title}
+          </h2>
+          <span className="text-[10px] font-bold text-slate-400">{mission.maxTurns}턴 제한</span>
+        </div>
+        <div className="space-y-1">
+          {progress.checklist.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-1.5 text-xs">
+              {item.done ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              ) : (
+                <Circle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              )}
+              <span className={item.done ? 'text-emerald-200 font-bold' : 'text-slate-300'}>
+                {item.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Port Shop (Active when docked) */}
       <section className="rounded-2xl border border-amber-500/30 bg-slate-900/95 p-3.5 shadow-lg">
@@ -55,7 +84,7 @@ export default function TradeLogTab({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={state.gold < RESUPPLY_COST || (state.food >= 100 && !state.isSpoiled)}
+                disabled={state.gold < RESUPPLY_COST || (state.food >= MAX_FOOD && !state.isSpoiled)}
                 onClick={onBuySupplies}
                 className="flex flex-col items-start gap-1 rounded-xl border border-sky-500/40 bg-sky-950/35 hover:bg-sky-950/55 disabled:opacity-45 p-2.5 text-left transition cursor-pointer disabled:cursor-not-allowed"
               >
@@ -66,7 +95,7 @@ export default function TradeLogTab({
                   </span>
                   <span className="text-amber-300">{RESUPPLY_COST} G</span>
                 </div>
-                <span className="text-[10px] text-slate-300">100 회복 · 부패 해제</span>
+                <span className="text-[10px] text-slate-300">{MAX_FOOD} 회복 · 부패 해제</span>
               </button>
 
               <button

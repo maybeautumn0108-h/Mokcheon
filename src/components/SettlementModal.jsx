@@ -30,20 +30,40 @@ export default function SettlementModal({ settlement, state, canReset = true, on
           </div>
         </div>
 
-        {/* Maluku Badge */}
-        <div className="mt-3 flex items-center gap-2 text-xs">
-          <span
-            className={`rounded-full px-2.5 py-0.5 font-bold border ${
-              settlement.visitedMaluku
-                ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
-                : 'bg-slate-800 border-slate-700 text-slate-400'
-            }`}
-          >
-            {settlement.visitedMaluku ? '★ 향료제도(말루쿠) 도달 완료' : '향료제도 미도달'}
-          </span>
-          <span className="rounded-full bg-slate-800 border border-slate-700 px-2.5 py-0.5 text-slate-300">
-            경과 {state.turn}/30턴
-          </span>
+        {/* Mission Milestone Badges */}
+        <div className="mt-3 space-y-1.5 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`rounded-full px-2.5 py-0.5 font-bold border ${
+                settlement.missionProgress?.goalAchieved
+                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                  : 'bg-rose-500/15 border-rose-400/40 text-rose-200'
+              }`}
+            >
+              {settlement.missionProgress?.goalAchieved
+                ? `★ ${settlement.mission?.shortTitle} 완수!`
+                : `${settlement.mission?.shortTitle} 미달성`}
+            </span>
+            <span className="rounded-full bg-slate-800 border border-slate-700 px-2.5 py-0.5 text-slate-300">
+              경과 {state.turn}/{settlement.mission?.maxTurns ?? 30}턴
+            </span>
+          </div>
+          {settlement.missionProgress?.checklist && (
+            <div className="flex flex-wrap gap-1.5">
+              {settlement.missionProgress.checklist.map((c, idx) => (
+                <span
+                  key={idx}
+                  className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${
+                    c.done
+                      ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
+                      : 'border-slate-700 bg-slate-950 text-slate-400'
+                  }`}
+                >
+                  {c.done ? '✓' : '✕'} {c.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Toggle Tabs: Route Comparison Map vs Settlement Breakdown */}
@@ -129,6 +149,15 @@ export default function SettlementModal({ settlement, state, canReset = true, on
               +{settlement.resourceBonus} 점
             </span>
           </div>
+
+          {settlement.missionBonus > 0 && (
+            <div className="border-t border-slate-800/80 pt-2 flex items-center justify-between">
+              <span className="text-slate-400">미션 목표 완수 보너스</span>
+              <span className="font-bold text-emerald-300 tabular-nums">
+                +{settlement.missionBonus} 점
+              </span>
+            </div>
+          )}
 
           <div className="border-t border-amber-500/30 pt-2.5 flex items-center justify-between text-sm">
             <span className="font-black text-white flex items-center gap-1.5">

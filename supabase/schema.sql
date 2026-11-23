@@ -5,11 +5,15 @@ create table if not exists public.rooms (
   phase text not null default 'waiting',
   current_turn integer not null default 1,
   turn_phase text not null default 'sail_card',
+  mission_id text not null default 'mission_1',
   updated_at timestamptz not null default now()
 );
 
 alter table public.rooms
   add column if not exists turn_phase text not null default 'sail_card';
+
+alter table public.rooms
+  add column if not exists mission_id text not null default 'mission_1';
 
 create table if not exists public.fleets (
   room_code text not null,

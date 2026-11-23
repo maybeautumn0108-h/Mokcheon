@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Compass,
   Eye,
   EyeOff,
   FastForward,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { LAND_POLYGONS } from '../data/worldCoastlines.js';
 import { PORTS } from '../data/ports.js';
+import { MISSIONS, getMissionById } from '../data/missions.js';
 import { isFleetOffline } from '../engine/fleetSync.js';
 
 const FLEET_COLORS = ['#ef4444', '#38bdf8', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
@@ -34,10 +36,12 @@ export default function TeacherModeView({
   onResetRoom,
   onKickFleet,
   onDeleteRoom,
+  onChangeRoomMission,
 }) {
   const [hideMap, setHideMap] = useState(false);
   const [selectedRoomFilter, setSelectedRoomFilter] = useState('ALL');
   const [newRoomsInput, setNewRoomsInput] = useState('');
+  const [batchMissionId, setBatchMissionId] = useState('mission_1');
 
   // Ensure activeRoomCode is always included even if rooms list is loading
   const roomsList = useMemo(() => {
@@ -101,7 +105,7 @@ export default function TeacherModeView({
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
     if (codes.length === 0) return;
-    onCreateBatchRooms(codes);
+    onCreateBatchRooms(codes, batchMissionId);
     setNewRoomsInput('');
   };
 
@@ -164,15 +168,27 @@ export default function TeacherModeView({
 
         {/* Batch Room Creation Bar */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 flex flex-wrap items-center justify-between gap-3">
-          <form onSubmit={handleAddRoomsSubmit} className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+          <form onSubmit={handleAddRoomsSubmit} className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
             <Layers className="w-4 h-4 text-amber-400 shrink-0" />
             <input
               type="text"
               value={newRoomsInput}
               onChange={(e) => setNewRoomsInput(e.target.value)}
               placeholder="새 게임방 코드 (쉼표로 여러 개 입력: 1조, 2조, 3조)"
-              className="flex-1 min-w-[200px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-white"
+              className="flex-1 min-w-[180px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-white"
             />
+            <select
+              value={batchMissionId}
+              onChange={(e) => setBatchMissionId(e.target.value)}
+              aria-label="새 방 미션 선택"
+              className="rounded-xl border border-amber-500/40 bg-slate-950 px-2.5 py-1.5 text-xs font-bold text-amber-200 cursor-pointer"
+            >
+              {MISSIONS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.shortTitle} ({m.maxTurns}턴)
+                </option>
+              ))}
+            </select>
             <button
               type="submit"
               className="inline-flex items-center gap-1 rounded-xl bg-amber-500 hover:bg-amber-400 px-3 py-1.5 text-xs font-black text-slate-950 cursor-pointer"
@@ -189,7 +205,10 @@ export default function TeacherModeView({
                 key={n}
                 type="button"
                 onClick={() =>
-                  onCreateBatchRooms(Array.from({ length: n }, (_, i) => `${i + 1}조`))
+                  onCreateBatchRooms(
+                    Array.from({ length: n }, (_, i) => `${i + 1}조`),
+                    batchMissionId,
+                )
                 }
                 className="rounded-lg border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1 text-[11px] font-bold text-sky-200 cursor-pointer"
               >
@@ -207,6 +226,7 @@ export default function TeacherModeView({
             const currentTurn = room.currentTurn ?? 1;
             const phase = room.phase ?? 'waiting';
             const turnPhase = room.turnPhase ?? 'sail_card';
+            const mission = getMissionById(room.missionId);
 
             const cardsReadyCount = onlineFleets.filter(
               (f) =>
@@ -259,6 +279,31 @@ export default function TeacherModeView({
                           ? `${currentTurn}턴 항해·카드 (${cardsReadyCount}/${onlineFleets.length})`
                           : `${currentTurn}턴 주변활동 (${readyCount}/${onlineFleets.length})`}
                   </span>
+                </div>
+
+                {/* Room Mission Selector / Badge */}
+                <div className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="inline-flex items-center gap-1 text-slate-400 font-bold">
+                    <Compass className="w-3 h-3 text-amber-400" />
+                    미션:
+                  </span>
+                  {phase === 'waiting' && onChangeRoomMission ? (
+                    <select
+                      value={mission.id}
+                      onChange={(e) => onChangeRoomMission(room.roomCode, e.target.value)}
+                      className="flex-1 rounded-lg border border-amber-500/30 bg-slate-950 px-2 py-1 text-[11px] font-bold text-amber-200 cursor-pointer"
+                    >
+                      {MISSIONS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.shortTitle} ({m.maxTurns}턴)
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-200">
+                      {mission.shortTitle} · {mission.maxTurns}턴
+                    </span>
+                  )}
                 </div>
 
                 {/* Members Inside This Room */}

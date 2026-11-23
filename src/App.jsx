@@ -26,7 +26,8 @@ import ActivityStepPanel from './components/ActivityStepPanel.jsx';
 import InteractionModal from './components/InteractionModal.jsx';
 import TurnTransitionOverlay from './components/TurnTransitionOverlay.jsx';
 import { drawThreeSituationCards } from './data/situationCards.js';
-import { MAX_TURNS, getTurnInfo } from './data/calendar.js';
+import { getTurnInfo } from './data/calendar.js';
+import { getMissionById } from './data/missions.js';
 import {
   applySituationCardToState,
   buySpecialty,
@@ -90,28 +91,38 @@ import {
   upsertPlayerToSupabase,
 } from './engine/fleetSync.js';
 
-const END_MESSAGES = {
-  returned: {
-    title: '리스본 무사 귀항 성공!',
-    tone: 'emerald',
-    desc: '30턴 이내에 리스본으로 복귀하여 최종 정산을 완료했습니다.',
-  },
-  timeup: {
-    title: '30턴 항해 기한 종료',
-    tone: 'amber',
-    desc: '10개월(30턴)의 항해 기간이 모두 경과했습니다. 최종 정산 결과를 확인하세요.',
-  },
-  stranded: {
-    title: '식량·식수 고갈로 조난',
-    tone: 'rose',
-    desc: '식량과 식수가 바닥났습니다. 6턴 이내 기항지 보급 전략을 세워 다시 도전하세요.',
-  },
-  sunk: {
-    title: '선체 파손으로 난파',
-    tone: 'rose',
-    desc: '연안 좌초 피해가 누적되어 항해를 계속할 수 없습니다.',
-  },
-};
+function getEndMeta(status, missionId) {
+  const mission = getMissionById(missionId);
+  if (status === 'returned') {
+    return {
+      title: '리스본 무사 귀항 성공!',
+      tone: 'emerald',
+      desc: `${mission.maxTurns}턴 이내에 리스본으로 복귀하여 최종 정산을 완료했습니다.`,
+    };
+  }
+  if (status === 'timeup') {
+    return {
+      title: `${mission.maxTurns}턴 항해 기한 종료`,
+      tone: 'amber',
+      desc: `${mission.maxTurns}턴 항해 기간이 모두 경과했습니다. 최종 정산 결과를 확인하세요.`,
+    };
+  }
+  if (status === 'stranded') {
+    return {
+      title: '식량·식수 고갈로 조난',
+      tone: 'rose',
+      desc: '식량과 식수가 바닥났습니다. 8턴 이내 기항지 보급 전략을 세워 다시 도전하세요.',
+    };
+  }
+  if (status === 'sunk') {
+    return {
+      title: '선체 파손으로 난파',
+      tone: 'rose',
+      desc: '연안 좌초 피해가 누적되어 항해를 계속할 수 없습니다.',
+    };
+  }
+  return null;
+}
 
 export default function App() {
   const savedSnapshot = useMemo(() => loadLocalGameState(), []);
@@ -152,6 +163,7 @@ export default function App() {
     phase: 'waiting',
     currentTurn: 1,
     turnPhase: 'sail_card',
+    missionId: 'mission_1',
   });
   const [interactions, setInteractions] = useState([]);
   const [draftTradePeer, setDraftTradePeer] = useState(null);
@@ -402,6 +414,17 @@ export default function App() {
   useEffect(() => {
     if (!isOnlineSession) return;
 
+    const targetMission = roomMeta.missionId || 'mission_1';
+
+    if (
+      roomMeta.phase === 'waiting' &&
+      !isSpectatorHost &&
+      playMode === 'lobby' &&
+      (gameState.missionId || 'mission_1') !== targetMission
+    ) {
+      setGameState(createInitialGameState(targetMission));
+    }
+
     if (roomMeta.phase === 'waiting' && playMode === 'online') {
       setPlayMode('lobby');
       setJoinedLobbyRoom(true);
@@ -411,7 +434,7 @@ export default function App() {
       setShowSettlement(false);
       setDraftTradePeer(null);
       setLocalDemoInteraction(null);
-      setGameState(createInitialGameState());
+      setGameState(createInitialGameState(targetMission));
       prevRoomTurnRef.current = 1;
       prevRoomTurnPhaseRef.current = 'sail_card';
       return;
@@ -423,6 +446,13 @@ export default function App() {
       joinedLobbyRoom &&
       !isSpectatorHost
     ) {
+      setGameState((prev) =>
+        (prev.missionId || 'mission_1') !== targetMission &&
+        prev.turn === 1 &&
+        (prev.trail?.length ?? 0) <= 1
+          ? createInitialGameState(targetMission)
+          : prev,
+      );
       setPlayMode('online');
       prevRoomTurnRef.current = roomMeta.currentTurn;
       prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
@@ -485,6 +515,8 @@ export default function App() {
     roomMeta.phase,
     roomMeta.currentTurn,
     roomMeta.turnPhase,
+    roomMeta.missionId,
+    gameState.missionId,
     playMode,
     joinedLobbyRoom,
     isSpectatorHost,
@@ -543,14 +575,20 @@ export default function App() {
     if (!areAllFleetsReadyForNextTurn(realFleets, roomMeta.currentTurn, nowTick)) return;
 
     if (isSupabaseConfigured) {
-      tryAdvanceRoomTurnSupabase(cleanRoom, roomMeta.currentTurn, realFleets).then((ok) => {
+      tryAdvanceRoomTurnSupabase(
+        cleanRoom,
+        roomMeta.currentTurn,
+        realFleets,
+        roomMeta.missionId,
+      ).then((ok) => {
         if (ok) sendPingRef.current?.();
       });
     } else {
-      const isFinal = roomMeta.currentTurn >= MAX_TURNS;
+      const missionMaxTurns = getMissionById(roomMeta.missionId).maxTurns;
+      const isFinal = roomMeta.currentTurn >= missionMaxTurns;
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
         ...roomMeta,
-        currentTurn: isFinal ? MAX_TURNS : roomMeta.currentTurn + 1,
+        currentTurn: isFinal ? missionMaxTurns : roomMeta.currentTurn + 1,
         turnPhase: 'sail_card',
         phase: isFinal ? 'finished' : 'playing',
       });
@@ -667,9 +705,9 @@ export default function App() {
   const handleJoinOnlineRoom = async () => {
     setIsSpectatorHost(false);
     setJoinedLobbyRoom(true);
-    setGameState(createInitialGameState());
     if (isSupabaseConfigured) {
       const rm = await fetchOrCreateRoomSupabase(cleanRoom, clientId);
+      setGameState(createInitialGameState(rm?.missionId || 'mission_1'));
       if (rm) {
         setRoomMeta(rm);
         if (rm.phase === 'playing') {
@@ -681,6 +719,7 @@ export default function App() {
       const rm = loadLocalRoomMeta(cleanRoom, clientId);
       saveLocalRoomMeta(cleanRoom, rm);
       setRoomMeta(rm);
+      setGameState(createInitialGameState(rm.missionId || 'mission_1'));
       if (rm.phase === 'playing') {
         setPlayMode('online');
       }
@@ -703,12 +742,12 @@ export default function App() {
     setIsTeacherMode(true);
   };
 
-  const handleStartSoloPractice = () => {
+  const handleStartSoloPractice = (soloMissionId = 'mission_1') => {
     setIsSpectatorHost(false);
     setJoinedLobbyRoom(false);
     setShowDemoRivals(true);
     setPlayMode('solo');
-    setGameState(createInitialGameState());
+    setGameState(createInitialGameState(soloMissionId));
     setActiveTab('helm');
     triggerTurnTransition(1);
   };
@@ -758,15 +797,36 @@ export default function App() {
   };
 
   // Multi-Room Teacher Handlers
-  const handleCreateBatchRooms = async (codes) => {
+  const handleCreateBatchRooms = async (codes, missionId = 'mission_1') => {
     if (!codes?.length) return;
     if (isSupabaseConfigured) {
-      const rooms = await ensureRoomsBatchSupabase(codes, clientId);
+      const rooms = await ensureRoomsBatchSupabase(codes, clientId, missionId);
       setTeacherAllRooms(rooms);
     } else {
       for (const rc of codes) {
         const cur = loadLocalRoomMeta(rc, clientId);
-        saveLocalRoomMeta(rc, { ...cur, hostClientId: clientId });
+        saveLocalRoomMeta(rc, { ...cur, hostClientId: clientId, missionId });
+      }
+      setTeacherAllRooms(loadAllLocalRoomsMeta());
+    }
+  };
+
+  const handleChangeRoomMission = async (targetRoomCode, missionId) => {
+    const rc = targetRoomCode || cleanRoom;
+    if (!missionId) return;
+    if (isSupabaseConfigured) {
+      const updated = await updateRoomInSupabase(rc, { missionId });
+      if (updated) {
+        if (rc === cleanRoom) setRoomMeta(updated);
+        setTeacherAllRooms((prev) => prev.map((r) => (r.roomCode === rc ? updated : r)));
+        sendPingRef.current?.();
+      }
+    } else {
+      const cur = loadLocalRoomMeta(rc, clientId);
+      const next = saveLocalRoomMeta(rc, { ...cur, missionId });
+      if (rc === cleanRoom) {
+        setRoomMeta(next);
+        channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
       }
       setTeacherAllRooms(loadAllLocalRoomsMeta());
     }
@@ -808,8 +868,11 @@ export default function App() {
   };
 
   const handleForceNextTurnByCode = async (rc, curTurn) => {
-    const isFinal = curTurn >= MAX_TURNS;
-    const nextTurn = isFinal ? MAX_TURNS : curTurn + 1;
+    const roomObj =
+      teacherAllRooms.find((r) => r.roomCode === rc) || (rc === cleanRoom ? roomMeta : null);
+    const maxTurns = getMissionById(roomObj?.missionId).maxTurns;
+    const isFinal = curTurn >= maxTurns;
+    const nextTurn = isFinal ? maxTurns : curTurn + 1;
     const nextPhase = isFinal ? 'finished' : 'playing';
     if (isSupabaseConfigured) {
       const updated = await updateRoomInSupabase(rc, {
@@ -924,8 +987,9 @@ export default function App() {
   };
 
   const handleForceNextTurn = async () => {
-    const isFinal = roomMeta.currentTurn >= MAX_TURNS;
-    const nextTurn = isFinal ? MAX_TURNS : roomMeta.currentTurn + 1;
+    const maxTurns = getMissionById(roomMeta.missionId).maxTurns;
+    const isFinal = roomMeta.currentTurn >= maxTurns;
+    const nextTurn = isFinal ? maxTurns : roomMeta.currentTurn + 1;
     const nextPhase = isFinal ? 'finished' : 'playing';
     if (isSupabaseConfigured) {
       const updated = await updateRoomInSupabase(cleanRoom, {
@@ -997,7 +1061,7 @@ export default function App() {
     setDraftTradePeer(null);
     setLocalDemoInteraction(null);
     clearLocalGameState();
-    setGameState(createInitialGameState());
+    setGameState((prev) => createInitialGameState(prev.missionId || 'mission_1'));
     setActiveTab('helm');
     if (playMode === 'online') {
       setPlayMode('lobby');
@@ -1295,6 +1359,7 @@ export default function App() {
         onResetRoom={handleResetRoomByCode}
         onKickFleet={handleKickFleet}
         onDeleteRoom={handleDeleteRoomByCode}
+        onChangeRoomMission={handleChangeRoomMission}
       />
     );
   }
@@ -1316,13 +1381,14 @@ export default function App() {
         onStartSoloPractice={handleStartSoloPractice}
         onLeaveRoom={handleLeaveToLobby}
         onHostStartVoyage={handleHostStartVoyage}
+        onChangeRoomMission={(mid) => handleChangeRoomMission(cleanRoom, mid)}
         onKickFleet={(cid) => handleKickFleet(cleanRoom, cid)}
         onOpenTeacherMode={() => setIsTeacherMode(true)}
       />
     );
   }
 
-  const endMeta = END_MESSAGES[gameState.status];
+  const endMeta = getEndMeta(gameState.status, gameState.missionId);
   const cardsReadyCount = onlineRealFleets.filter(
     (f) =>
       f.status !== 'active' ||

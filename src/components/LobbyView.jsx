@@ -3,6 +3,7 @@ import {
   Anchor,
   Compass,
   Crown,
+  Flag,
   Lock,
   LogOut,
   Monitor,
@@ -13,6 +14,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { MISSIONS, getMissionById } from '../data/missions.js';
 
 const TEACHER_PIN = (import.meta.env?.VITE_TEACHER_PIN || '1492').trim();
 
@@ -31,14 +33,17 @@ export default function LobbyView({
   onStartSoloPractice,
   onLeaveRoom,
   onHostStartVoyage,
+  onChangeRoomMission,
   onKickFleet,
   onOpenTeacherMode,
 }) {
   const [showPinBox, setShowPinBox] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [soloMissionId, setSoloMissionId] = useState('mission_1');
 
   const isHost = roomMeta?.hostClientId === myClientId;
+  const activeMission = getMissionById(roomMeta?.missionId);
 
   const handleTeacherPinSubmit = (e) => {
     e.preventDefault();
@@ -137,12 +142,27 @@ export default function LobbyView({
 
                 <button
                   type="button"
-                  onClick={onStartSoloPractice}
+                  onClick={() => onStartSoloPractice(soloMissionId)}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-800 py-2.5 text-xs font-bold text-slate-200 transition cursor-pointer"
                 >
                   <Anchor className="w-3.5 h-3.5" />
                   혼자 연습하기
                 </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 text-[11px] space-y-1.5">
+                <div className="font-bold text-slate-400">혼자 연습할 미션 선택</div>
+                <select
+                  value={soloMissionId}
+                  onChange={(e) => setSoloMissionId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-amber-200"
+                >
+                  {MISSIONS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.title}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {showPinBox && (
@@ -206,6 +226,38 @@ export default function LobbyView({
                   <LogOut className="w-3.5 h-3.5" />
                   나가기
                 </button>
+              </div>
+
+              {/* Room Mission Info & Host Selector */}
+              <div className="rounded-xl border border-sky-500/35 bg-sky-950/30 p-3 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black text-sky-200 flex items-center gap-1.5">
+                    <Flag className="w-3.5 h-3.5 text-amber-400" />
+                    {activeMission.title}
+                  </span>
+                  <span className="rounded-full bg-slate-900 border border-slate-700 px-2 py-0.5 text-[10px] font-bold text-amber-300 shrink-0">
+                    {activeMission.maxTurns}턴
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">{activeMission.summary}</p>
+                {isHost && onChangeRoomMission && (
+                  <div className="pt-1">
+                    <label className="block text-[10px] text-sky-300 font-bold mb-1">
+                      방장 미션 변경
+                    </label>
+                    <select
+                      value={activeMission.id}
+                      onChange={(e) => onChangeRoomMission(e.target.value)}
+                      className="w-full rounded-lg border border-sky-500/40 bg-slate-950 px-2.5 py-1.5 text-xs font-bold text-white"
+                    >
+                      {MISSIONS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Joined Teams List */}

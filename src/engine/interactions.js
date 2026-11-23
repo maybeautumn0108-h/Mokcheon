@@ -140,7 +140,7 @@ export function applyTradeToState(state, offer, isInitiator, peerName) {
   if (giveType === 'food') nextFood = Math.max(1, nextFood - giveAmt);
 
   if (getType === 'gold') nextGold += getAmt;
-  if (getType === 'food') nextFood = Math.min(100, nextFood + getAmt);
+  if (getType === 'food') nextFood = Math.min(140, nextFood + getAmt);
 
   const labelMap = { gold: '금화', food: '식량·식수' };
   const turnInfo = getTurnInfo(state.activeTurn || state.turn);
@@ -172,7 +172,7 @@ export function applyBattleToState(state, isWinner, peerName, payload = BATTLE_S
     return {
       ...state,
       gold: state.gold + lootGold,
-      food: Math.min(100, state.food + lootFood),
+      food: Math.min(140, state.food + lootFood),
       logs: [
         {
           turn: state.activeTurn || state.turn,

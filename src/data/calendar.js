@@ -1,6 +1,6 @@
 /**
- * 30-turn expedition calendar and solar declination table (δ)
- * Matches the B4 reference chart (5월 초 ~ 2월 말, 1 turn = 10 days).
+ * Expedition calendar and solar declination table (δ) up to 40 turns
+ * (Turns 1~30 match the B4 reference chart; turns 31~40 continue March~June for Mission 3).
  */
 export const TURN_CALENDAR = [
   { turn: 1, label: '5월 초', shortLabel: '5초', declination: 15.5 },
@@ -33,11 +33,22 @@ export const TURN_CALENDAR = [
   { turn: 28, label: '2월 초', shortLabel: '2초', declination: -15.5 },
   { turn: 29, label: '2월 중', shortLabel: '2중', declination: -12.5 },
   { turn: 30, label: '2월 말', shortLabel: '2말', declination: -9.0 },
+  // Extended turns 31~40 for Mission 2 & Mission 3
+  { turn: 31, label: '3월 초', shortLabel: '3초', declination: -5.5 },
+  { turn: 32, label: '3월 중', shortLabel: '3중', declination: -1.5 },
+  { turn: 33, label: '3월 말', shortLabel: '3말', declination: 2.5 },
+  { turn: 34, label: '4월 초', shortLabel: '4초', declination: 6.5 },
+  { turn: 35, label: '4월 중', shortLabel: '4중', declination: 10.0 },
+  { turn: 36, label: '4월 말', shortLabel: '4말', declination: 13.5 },
+  { turn: 37, label: '5월 초(이듬해)', shortLabel: '5초', declination: 15.5 },
+  { turn: 38, label: '5월 중(이듬해)', shortLabel: '5중', declination: 18.5 },
+  { turn: 39, label: '5월 말(이듬해)', shortLabel: '5말', declination: 21.0 },
+  { turn: 40, label: '6월 초(이듬해)', shortLabel: '6초', declination: 22.5 },
 ];
 
 export const MAX_TURNS = 30;
 
 export function getTurnInfo(turn) {
-  const clamped = Math.max(1, Math.min(MAX_TURNS, turn));
+  const clamped = Math.max(1, Math.min(TURN_CALENDAR.length, turn));
   return TURN_CALENDAR[clamped - 1];
 }

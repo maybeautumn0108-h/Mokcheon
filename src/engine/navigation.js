@@ -16,14 +16,19 @@ import {
 import { MAX_TURNS, getTurnInfo } from '../data/calendar.js';
 import { evaluateWind, normalizeDeg } from '../data/windZones.js';
 import { rollWeather } from '../data/weather.js';
+import { evaluateMissionProgress, getMissionById } from '../data/missions.js';
 
 export const SAFE_OFFSHORE_DEG = 1.8;
 export const COAST_SIGHT_RADIUS_DEG = 6.0;
 export const FLEET_RADAR_RADIUS_DEG = 10.0; // 1.0 cm (1 grid square) on B4 map
-export const SPOILAGE_THRESHOLD_TURNS = 6;
+export const SPOILAGE_THRESHOLD_TURNS = 8;
+export const INITIAL_FOOD = 140;
+export const MAX_FOOD = 140;
 
-export function createInitialGameState() {
+export function createInitialGameState(missionId = 'mission_1') {
+  const mission = getMissionById(missionId);
   return {
+    missionId: mission.id,
     turn: 1,
     activeTurn: 1,
     cardCompletedTurn: 0,
@@ -34,7 +39,7 @@ export function createInitialGameState() {
     lon: LISBON_COORDS.lon,
     headingDeg: 205, // SSW initial course toward Canaries/Atlantic
     isFullSail: false,
-    food: 100,
+    food: INITIAL_FOOD,
     hull: 100,
     gold: 500,
     cargo: [],
@@ -54,8 +59,8 @@ export function createInitialGameState() {
         turn: 0,
         dateLabel: '5월 초',
         type: 'depart',
-        title: '리스본 출항 준비 완료',
-        detail: 'B4 항해도와 자를 준비하고 첫 항로를 설정하세요. (출발지: 38.7°N, 9.1°W)',
+        title: `${mission.shortTitle} 출항 준비 완료`,
+        detail: `${mission.rulesNote} (출발지: 리스본 38.7°N, 9.1°W)`,
       },
     ],
   };
@@ -365,6 +370,15 @@ export function executeSailTurn(state) {
 
   let nextStatus = 'active';
   const nextTurn = state.turn + 1;
+  const missionMaxTurns = getMissionById(state.missionId).maxTurns;
+
+  // For Missions 2 & 3, only treat returning to Lisbon as voyage completion once mission checkpoints are met
+  const preProgress = evaluateMissionProgress(
+    { ...state, status: 'returned' },
+    state.missionId,
+  );
+  const canCompleteAtLisbon =
+    state.missionId === 'mission_1' ? true : preProgress.goalAchieved;
 
   if (nextHull <= 0) {
     nextStatus = 'sunk';
@@ -373,10 +387,11 @@ export function executeSailTurn(state) {
   } else if (
     hasDepartedLisbon &&
     nearbyPort?.id === 'lisbon' &&
-    state.turn >= 2
+    state.turn >= 2 &&
+    canCompleteAtLisbon
   ) {
     nextStatus = 'returned';
-  } else if (state.turn >= MAX_TURNS) {
+  } else if (state.turn >= missionMaxTurns) {
     nextStatus = 'timeup';
   }
 
@@ -456,8 +471,9 @@ export function holdPositionTurn(state) {
   if (state.status !== 'active') return state;
   const foodCost = Math.round(7 * (state.isSpoiled ? 1.5 : 1.0));
   const nextFood = Math.max(0, state.food - foodCost);
+  const missionMaxTurns = getMissionById(state.missionId).maxTurns;
   const nextStatus =
-    nextFood <= 0 ? 'stranded' : state.turn >= MAX_TURNS ? 'timeup' : 'active';
+    nextFood <= 0 ? 'stranded' : state.turn >= missionMaxTurns ? 'timeup' : 'active';
   const turnInfo = getTurnInfo(state.turn);
 
   return {
@@ -545,7 +561,14 @@ export function enterPortInActivity(state) {
     ? state.visitedPorts
     : [...state.visitedPorts, port.id];
 
-  const isReturningHome = state.hasDepartedLisbon && port.id === 'lisbon';
+  const preProgress = evaluateMissionProgress(
+    { ...state, visitedPorts, status: 'returned' },
+    state.missionId,
+  );
+  const canCompleteAtLisbon =
+    state.missionId === 'mission_1' ? true : preProgress.goalAchieved;
+  const isReturningHome =
+    state.hasDepartedLisbon && port.id === 'lisbon' && canCompleteAtLisbon;
 
   const nextState = {
     ...state,
@@ -579,7 +602,8 @@ export function enterPortInActivity(state) {
 export function finishActivityTurn(state) {
   if (state.status !== 'active') return state;
   const resolvedTurn = state.activeTurn || Math.max(1, state.turn - 1);
-  const nextStatus = resolvedTurn >= MAX_TURNS ? 'timeup' : 'active';
+  const missionMaxTurns = getMissionById(state.missionId).maxTurns;
+  const nextStatus = resolvedTurn >= missionMaxTurns ? 'timeup' : 'active';
 
   return {
     ...state,
@@ -601,10 +625,11 @@ export function executeDockTurn(state) {
 
   const turnInfo = getTurnInfo(state.turn);
   const nextTurn = state.turn + 1;
+  const missionMaxTurns = getMissionById(state.missionId).maxTurns;
   const nextStatus =
     state.hasDepartedLisbon && port.id === 'lisbon'
       ? 'returned'
-      : state.turn >= MAX_TURNS
+      : state.turn >= missionMaxTurns
         ? 'timeup'
         : 'active';
 
@@ -648,7 +673,7 @@ export function buySupplies(state) {
   return {
     ...state,
     gold: state.gold - RESUPPLY_COST,
-    food: 100,
+    food: MAX_FOOD,
     turnsWithoutPort: 0,
     isSpoiled: false,
     logs: [
@@ -657,7 +682,7 @@ export function buySupplies(state) {
         dateLabel: turnInfo.label,
         type: 'trade',
         title: `식량·식수 완충 (-${RESUPPLY_COST} G)`,
-        detail: '식량·식수 100 회복 및 식수 부패 해제',
+        detail: `식량·식수 ${MAX_FOOD} 회복 및 식수 부패 해제`,
       },
       ...state.logs,
     ],
@@ -756,13 +781,16 @@ export function sellCargoItem(state, index) {
  * Final Settlement Calculator matching SPEC §6.
  */
 export function calculateFinalSettlement(state) {
-  const visitedMaluku = state.visitedPorts.includes('maluku');
+  const mission = getMissionById(state.missionId);
+  const missionProgress = evaluateMissionProgress(state, mission.id);
+  const visitedMaluku = missionProgress.visitedMaluku;
+
   const cargoBreakdown = state.cargo.map((item) => {
     let appliedMultiplier = 0;
     if (state.status === 'returned') {
       appliedMultiplier = item.multiplier;
     } else if (state.status === 'timeup' && state.isDocked) {
-      appliedMultiplier = 1.0; // Overseas port at turn 30: recover principal only
+      appliedMultiplier = 1.0;
     }
     const payout = Math.round(item.buyPrice * appliedMultiplier);
     return { ...item, appliedMultiplier, payout };
@@ -773,9 +801,12 @@ export function calculateFinalSettlement(state) {
   if (state.status === 'stranded' || state.status === 'sunk') {
     return {
       outcomeType: 'disaster',
+      mission,
+      missionProgress,
       remainingGold: 0,
       cargoTotal: 0,
       resourceBonus: 0,
+      missionBonus: 0,
       totalScore: 0,
       visitedMaluku,
       cargoBreakdown,
@@ -786,9 +817,12 @@ export function calculateFinalSettlement(state) {
   if (state.status === 'timeup' && !state.isDocked) {
     return {
       outcomeType: 'open_sea_timeup',
+      mission,
+      missionProgress,
       remainingGold: 0,
       cargoTotal: 0,
       resourceBonus: 0,
+      missionBonus: 0,
       totalScore: 0,
       visitedMaluku,
       cargoBreakdown,
@@ -800,9 +834,12 @@ export function calculateFinalSettlement(state) {
     const totalScore = state.gold + cargoTotal;
     return {
       outcomeType: 'overseas_docked',
+      mission,
+      missionProgress,
       remainingGold: state.gold,
       cargoTotal,
       resourceBonus: 0,
+      missionBonus: 0,
       totalScore,
       visitedMaluku,
       cargoBreakdown,
@@ -810,23 +847,39 @@ export function calculateFinalSettlement(state) {
     };
   }
 
-  // Returned to Lisbon within 30 turns
+  // Returned to Lisbon within mission turn limit
   const resourceBonus = state.food + state.hull;
-  const totalScore = state.gold + cargoTotal + resourceBonus;
-  const rankLabel =
-    visitedMaluku && totalScore >= 1400
-      ? '전설의 항해 제독 (향료제도 완주)'
-      : visitedMaluku
-        ? '향료 무역 개척자 (말루쿠 달성)'
-        : totalScore >= 900
-          ? '노련한 상단 선장'
-          : '무사 귀항 항해사';
+  const missionBonus = missionProgress.goalAchieved ? 300 : 0;
+  const totalScore = state.gold + cargoTotal + resourceBonus + missionBonus;
+
+  let rankLabel = '무사 귀항 항해사';
+  if (mission.id === 'mission_3') {
+    rankLabel = missionProgress.goalAchieved
+      ? '세계 일주 대제독 (마젤란·엘카노 완주!)'
+      : '부분 항해 귀항 (세계 일주 조건 미달)';
+  } else if (mission.id === 'mission_2') {
+    rankLabel = missionProgress.goalAchieved
+      ? '신항로 명차 대무역상 (서쪽 우회 완수!)'
+      : '귀항 완료 (서쪽 아메리카·중국 조건 미달)';
+  } else {
+    rankLabel =
+      visitedMaluku && totalScore >= 1400
+        ? '전설의 항해 제독 (향료제도 완주)'
+        : visitedMaluku
+          ? '향료 무역 개척자 (말루쿠 달성)'
+          : totalScore >= 900
+            ? '노련한 상단 선장'
+            : '무사 귀항 항해사';
+  }
 
   return {
     outcomeType: 'returned',
+    mission,
+    missionProgress,
     remainingGold: state.gold,
     cargoTotal,
     resourceBonus,
+    missionBonus,
     totalScore,
     visitedMaluku,
     cargoBreakdown,

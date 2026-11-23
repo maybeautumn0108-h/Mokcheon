@@ -12,6 +12,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { isFleetOffline } from '../engine/fleetSync.js';
+import { getMissionById } from '../data/missions.js';
 
 const TEACHER_PIN = (import.meta.env?.VITE_TEACHER_PIN || '1492').trim();
 
@@ -209,6 +210,7 @@ export default function FleetTab({
           {allFleets.map((fleet) => {
             const isMe = fleet.clientId === myClientId;
             const currentTurn = roomMeta?.currentTurn ?? 1;
+            const missionMaxTurns = getMissionById(roomMeta?.missionId).maxTurns;
             const turnPhase = roomMeta?.turnPhase ?? 'sail_card';
             const offline = !fleet.isDemo && isFleetOffline(fleet);
             const isDone =
@@ -259,7 +261,7 @@ export default function FleetTab({
                       </span>
                     )}
                     <span className="text-[11px] font-bold text-amber-300 tabular-nums">
-                      {Math.min(30, fleet.turn)}/30턴 · {fleet.gold}G
+                      {Math.min(missionMaxTurns, fleet.turn)}/{missionMaxTurns}턴 · {fleet.gold}G
                     </span>
                   </div>
                 </div>

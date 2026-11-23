@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PORTS, REPAIR_COST, RESUPPLY_COST } from '../data/ports.js';
+import { evaluateMissionProgress, getMissionById } from '../data/missions.js';
 import {
   findNearestCoast,
   getCoastalSightings,
@@ -113,13 +114,14 @@ test('Coastal sightings detect land within 6.0° at Lisbon without exposing cont
   assert.equal('name' in lms[0], false);
 });
 
-test('Departing Lisbon SW sails cleanly into open Atlantic and triggers water spoilage after 6 turns', () => {
+test('Departing Lisbon SW sails cleanly into open Atlantic and triggers water spoilage after 8 turns', () => {
   let state = createInitialGameState();
-  for (let t = 1; t <= 6; t++) {
+  assert.equal(state.food, 140);
+  for (let t = 1; t <= 8; t++) {
     const res = executeSailTurn({ ...state, headingDeg: 205 });
     state = res.nextState;
     assert.equal(state.status, 'active');
-    if (t < 6) {
+    if (t < 8) {
       assert.equal(state.isSpoiled, false);
     } else {
       assert.equal(state.isSpoiled, true);
@@ -193,7 +195,7 @@ test('Port shop resupply, hull repair, cargo purchase/sale, and final settlement
   };
 
   state = buySupplies(state);
-  assert.equal(state.food, 100);
+  assert.equal(state.food, 140);
   assert.equal(state.isSpoiled, false);
   assert.equal(state.gold, 500 - RESUPPLY_COST);
 
@@ -205,14 +207,15 @@ test('Port shop resupply, hull repair, cargo purchase/sale, and final settlement
   assert.equal(state.cargo.length, 1);
   assert.equal(state.cargo[0].multiplier, 5.5);
 
-  // Returned to Lisbon settlement: remaining gold + 200*5.5 + (100+95)
+  // Returned to Lisbon settlement: remaining gold + 200*5.5 + (140+95) + missionBonus(300)
   const returnedSettlement = calculateFinalSettlement({
     ...state,
     status: 'returned',
   });
   assert.equal(returnedSettlement.cargoTotal, 1100);
-  assert.equal(returnedSettlement.resourceBonus, 195);
-  assert.equal(returnedSettlement.totalScore, state.gold + 1100 + 195);
+  assert.equal(returnedSettlement.resourceBonus, 235);
+  assert.equal(returnedSettlement.missionBonus, 300);
+  assert.equal(returnedSettlement.totalScore, state.gold + 1100 + 235 + 300);
   assert.equal(returnedSettlement.visitedMaluku, true);
 
   // Turn 30 docked overseas: recover principal 1.0x only
@@ -461,4 +464,87 @@ test('Ship-to-ship Best-of-3 Rock-Paper-Scissors battle and trade exchange logic
   const afterTarg = applyTradeToState(sTarg, offer, false, '1조');
   assert.equal(afterTarg.gold, 150);
   assert.equal(afterTarg.food, 65);
+});
+
+test('Multi-mission system enforces Western Americas route for Mission 2 and full globe for Mission 3', () => {
+  assert.equal(getMissionById('mission_1').maxTurns, 30);
+  assert.equal(getMissionById('mission_2').maxTurns, 34);
+  assert.equal(getMissionById('mission_3').maxTurns, 40);
+
+  // Mission 2: Visiting Macau ONLY via eastern Indian Ocean does NOT satisfy West-route requirement
+  const m2EastOnly = {
+    ...createInitialGameState('mission_2'),
+    status: 'returned',
+    visitedPorts: ['lisbon', 'cape', 'goa', 'malacca', 'macau'],
+    trail: [
+      { lat: 38.7, lon: -9.1 },
+      { lat: -34.4, lon: 18.5 },
+      { lat: 15.5, lon: 73.8 },
+      { lat: 22.2, lon: 113.5 },
+    ],
+  };
+  const m2Fail = evaluateMissionProgress(m2EastOnly, 'mission_2');
+  assert.equal(m2Fail.visitedChina, true);
+  assert.equal(m2Fail.hasWestRoute, false);
+  assert.equal(m2Fail.goalAchieved, false);
+
+  // Mission 2: Passing Strait of Magellan / Rio + Macau + returning to Lisbon achieves Mission 2
+  const m2WestAndMacau = {
+    ...createInitialGameState('mission_2'),
+    status: 'returned',
+    visitedPorts: ['lisbon', 'magellan', 'guam', 'macau'],
+    trail: [
+      { lat: 38.7, lon: -9.1 },
+      { lat: -53.5, lon: -70.0 },
+      { lat: 13.5, lon: 144.8 },
+      { lat: 22.2, lon: 113.5 },
+    ],
+  };
+  const m2Ok = evaluateMissionProgress(m2WestAndMacau, 'mission_2');
+  assert.equal(m2Ok.visitedChina, true);
+  assert.equal(m2Ok.hasWestRoute, true);
+  assert.equal(m2Ok.goalAchieved, true);
+
+  // Settlement gives mission bonus ONLY when goalAchieved === true
+  const sFail = calculateFinalSettlement(m2EastOnly);
+  assert.equal(sFail.missionBonus, 0);
+  const sWin = calculateFinalSettlement(m2WestAndMacau);
+  assert.equal(sWin.missionBonus, 300);
+
+  // Mission 3: Visiting Americas only and turning back does NOT complete circumnavigation
+  const m3Partial = evaluateMissionProgress(
+    {
+      ...createInitialGameState('mission_3'),
+      status: 'returned',
+      visitedPorts: ['lisbon', 'rio', 'magellan'],
+      trail: [
+        { lat: 38.7, lon: -9.1 },
+        { lat: -22.9, lon: -43.2 },
+        { lat: -53.5, lon: -70.0 },
+      ],
+    },
+    'mission_3',
+  );
+  assert.equal(m3Partial.hasWestRoute, true);
+  assert.equal(m3Partial.hasEastRoute, false);
+  assert.equal(m3Partial.goalAchieved, false);
+
+  const m3Full = evaluateMissionProgress(
+    {
+      ...createInitialGameState('mission_3'),
+      status: 'returned',
+      visitedPorts: ['lisbon', 'magellan', 'guam', 'maluku', 'cape'],
+      trail: [
+        { lat: 38.7, lon: -9.1 },
+        { lat: -53.5, lon: -70.0 },
+        { lat: 13.5, lon: 144.8 },
+        { lat: -1.5, lon: 127.5 },
+        { lat: -34.4, lon: 18.5 },
+      ],
+    },
+    'mission_3',
+  );
+  assert.equal(m3Full.hasWestRoute, true);
+  assert.equal(m3Full.hasEastRoute, true);
+  assert.equal(m3Full.goalAchieved, true);
 });

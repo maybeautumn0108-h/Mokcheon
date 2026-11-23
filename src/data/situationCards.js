@@ -1,6 +1,8 @@
 import { PORTS } from './ports.js';
 import { findNearestCoast, shortestLonDelta } from './worldCoastlines.js';
 
+const MAX_FOOD = 140;
+
 /**
  * Situation Cards (3-choose-1 after every sailing turn).
  * STRICT RULE: Never alter ship coordinates (lat/lon) via cards so students'
@@ -15,7 +17,7 @@ export const SITUATION_CARDS = [
     description: '갑작스러운 열대 소나기를 돛과 통으로 받아 식수를 보충했습니다.',
     effectSummary: '식량·식수 +14',
     apply: (state) => ({
-      food: Math.min(100, state.food + 14),
+      food: Math.min(MAX_FOOD, state.food + 14),
     }),
   },
   {
@@ -26,7 +28,7 @@ export const SITUATION_CARDS = [
     description: '선원들이 갑판 위로 뛰어오른 날치와 다랑어를 낚아 식량을 아꼈습니다.',
     effectSummary: '식량·식수 +10',
     apply: (state) => ({
-      food: Math.min(100, state.food + 10),
+      food: Math.min(MAX_FOOD, state.food + 10),
     }),
   },
   {
@@ -82,7 +84,7 @@ export const SITUATION_CARDS = [
     effectSummary: '금화 -25 G · 식량·식수 +6',
     apply: (state) => ({
       gold: Math.max(0, state.gold - 25),
-      food: Math.min(100, state.food + 6),
+      food: Math.min(MAX_FOOD, state.food + 6),
     }),
   },
   {

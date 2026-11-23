@@ -5,6 +5,7 @@ import {
   supabase,
 } from './supabaseClient.js';
 import { MAX_TURNS } from '../data/calendar.js';
+import { getMissionById } from '../data/missions.js';
 
 export const OFFLINE_TIMEOUT_MS = 25000;
 export const HEARTBEAT_INTERVAL_MS = 8000;
@@ -107,6 +108,7 @@ export function loadLocalRoomMeta(roomCode, fallbackHostId) {
     phase: 'waiting',
     currentTurn: 1,
     turnPhase: 'sail_card',
+    missionId: 'mission_1',
   };
 }
 
@@ -181,6 +183,7 @@ function rowToRoom(row) {
     phase: row.phase || 'waiting',
     currentTurn: row.current_turn ?? 1,
     turnPhase: row.turn_phase || 'sail_card',
+    missionId: row.mission_id || 'mission_1',
     updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   };
 }
@@ -205,6 +208,7 @@ export async function fetchOrCreateRoomSupabase(roomCode, clientId) {
     phase: 'waiting',
     current_turn: 1,
     turn_phase: 'sail_card',
+    mission_id: 'mission_1',
     updated_at: new Date().toISOString(),
   };
 
@@ -232,6 +236,7 @@ export async function fetchOrCreateRoomSupabase(roomCode, clientId) {
     phase: 'waiting',
     currentTurn: 1,
     turnPhase: 'sail_card',
+    missionId: 'mission_1',
   };
 }
 
@@ -243,6 +248,7 @@ export async function updateRoomInSupabase(roomCode, patch) {
   if (patch.phase !== undefined) dbPatch.phase = patch.phase;
   if (patch.currentTurn !== undefined) dbPatch.current_turn = patch.currentTurn;
   if (patch.turnPhase !== undefined) dbPatch.turn_phase = patch.turnPhase;
+  if (patch.missionId !== undefined) dbPatch.mission_id = patch.missionId;
   if (patch.hostClientId !== undefined) dbPatch.host_client_id = patch.hostClientId;
 
   const { data, error } = await supabase
@@ -321,12 +327,18 @@ export function areAllFleetsReadyForNextTurn(fleets, currentTurn, nowMs = Date.n
 /**
  * Atomically advance room turn in Supabase if all active fleets have completed `currentTurn`.
  */
-export async function tryAdvanceRoomTurnSupabase(roomCode, currentTurn, fleets) {
+export async function tryAdvanceRoomTurnSupabase(
+  roomCode,
+  currentTurn,
+  fleets,
+  missionId = 'mission_1',
+) {
   if (!supabase || !roomCode) return false;
   if (!areAllFleetsReadyForNextTurn(fleets, currentTurn)) return false;
 
-  const isFinalTurn = currentTurn >= MAX_TURNS;
-  const nextTurn = isFinalTurn ? MAX_TURNS : currentTurn + 1;
+  const maxTurns = getMissionById(missionId).maxTurns || MAX_TURNS;
+  const isFinalTurn = currentTurn >= maxTurns;
+  const nextTurn = isFinalTurn ? maxTurns : currentTurn + 1;
   const nextPhase = isFinalTurn ? 'finished' : 'playing';
 
   const { data, error } = await supabase
@@ -613,7 +625,11 @@ export async function fetchAllFleetsGroupedSupabase() {
   return grouped;
 }
 
-export async function ensureRoomsBatchSupabase(roomCodes, hostClientId) {
+export async function ensureRoomsBatchSupabase(
+  roomCodes,
+  hostClientId,
+  missionId = 'mission_1',
+) {
   if (!supabase || !roomCodes?.length) return [];
   const rows = roomCodes.map((rc) => ({
     room_code: rc,
@@ -621,6 +637,7 @@ export async function ensureRoomsBatchSupabase(roomCodes, hostClientId) {
     phase: 'waiting',
     current_turn: 1,
     turn_phase: 'sail_card',
+    mission_id: missionId,
     updated_at: new Date().toISOString(),
   }));
   const { error } = await supabase

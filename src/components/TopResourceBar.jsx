@@ -1,34 +1,40 @@
 import React from 'react';
 import { Anchor, Compass, Coins, Droplets, HeartPulse, Package, AlertTriangle } from 'lucide-react';
-import { MAX_TURNS, getTurnInfo } from '../data/calendar.js';
+import { getTurnInfo } from '../data/calendar.js';
+import { getMissionById } from '../data/missions.js';
 
 export default function TopResourceBar({ state, displayTurn, canReset = false, onReset }) {
+  const mission = getMissionById(state.missionId);
   const shownTurn = displayTurn ?? state.turn;
   const turnInfo = getTurnInfo(shownTurn);
-  const foodLow = state.food <= 25;
+  const foodLow = state.food <= 35;
   const hullLow = state.hull <= 30;
 
   return (
     <header className="sticky top-0 z-30 border-b border-amber-500/20 bg-slate-950/95 backdrop-blur-md px-3 pt-2.5 pb-2">
       {/* Row 1: Turn, Calendar Date, Spoilage Warning, Reset */}
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <div className="flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 px-2.5 py-0.5 text-xs font-bold text-amber-300">
             <Compass className="w-3.5 h-3.5" />
             <span>
-              턴 {shownTurn}/{MAX_TURNS}
+              턴 {shownTurn}/{mission.maxTurns}
             </span>
             <span className="text-amber-200/70 font-medium">· {turnInfo.label}</span>
           </div>
+
+          <span className="rounded-full bg-slate-900 border border-slate-700 px-2 py-0.5 text-[10px] font-bold text-sky-300">
+            {mission.shortTitle}
+          </span>
 
           {state.isSpoiled ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/20 border border-rose-400/40 px-2 py-0.5 text-[11px] font-bold text-rose-300 animate-pulse">
               <AlertTriangle className="w-3 h-3" />
               식수 부패 1.5배
             </span>
-          ) : state.turnsWithoutPort >= 4 ? (
+          ) : state.turnsWithoutPort >= 6 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-              외해 {state.turnsWithoutPort}턴 (6턴 시 부패)
+              외해 {state.turnsWithoutPort}턴 (8턴 시 부패)
             </span>
           ) : null}
         </div>
