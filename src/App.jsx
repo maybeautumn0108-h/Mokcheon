@@ -28,11 +28,18 @@ import {
   sellCargoItem,
 } from './engine/navigation.js';
 import {
+  clearLocalGameState,
+  clearRoomInSupabase,
   clearRoomSnapshot,
   getDemoRivalFleets,
   getOrCreateClientId,
+  isSupabaseConfigured,
+  loadLocalGameState,
   loadRoomSnapshot,
+  saveLocalGameState,
   savePlayerToRoom,
+  subscribeToRoomSupabase,
+  upsertPlayerToSupabase,
 } from './engine/fleetSync.js';
 
 const END_MESSAGES = {
@@ -59,7 +66,10 @@ const END_MESSAGES = {
 };
 
 export default function App() {
-  const [gameState, setGameState] = useState(() => createInitialGameState());
+  const savedSnapshot = useMemo(() => loadLocalGameState(), []);
+  const [gameState, setGameState] = useState(
+    () => savedSnapshot?.state || createInitialGameState(),
+  );
   const [activeTab, setActiveTab] = useState('helm');
   const [isSailing, setIsSailing] = useState(false);
   const [turnOutcome, setTurnOutcome] = useState(null);
@@ -70,8 +80,12 @@ export default function App() {
 
   // Classroom Multiplayer & Teacher Mode state
   const [clientId] = useState(() => getOrCreateClientId());
-  const [roomCode, setRoomCode] = useState('HIST-101');
-  const [teamName, setTeamName] = useState('1조 콜럼버스');
+  const [roomCode, setRoomCode] = useState(
+    () => savedSnapshot?.meta?.roomCode || 'HIST-101',
+  );
+  const [teamName, setTeamName] = useState(
+    () => savedSnapshot?.meta?.teamName || '1조 콜럼버스',
+  );
   const [showDemoRivals, setShowDemoRivals] = useState(true);
   const [roomPeersMap, setRoomPeersMap] = useState({});
   const [isTeacherMode, setIsTeacherMode] = useState(false);
@@ -85,9 +99,22 @@ export default function App() {
     };
   }, []);
 
-  // BroadcastChannel & localStorage sync for classroom room
+  // Persist game state locally so mobile refresh preserves voyage progress
+  useEffect(() => {
+    saveLocalGameState(gameState, { roomCode, teamName });
+  }, [gameState, roomCode, teamName]);
+
+  // Room sync: Supabase Realtime when configured, else BroadcastChannel + localStorage
   useEffect(() => {
     const cleanRoom = roomCode.trim() || 'HIST-101';
+
+    if (isSupabaseConfigured) {
+      const unsubscribe = subscribeToRoomSupabase(cleanRoom, (map) => {
+        setRoomPeersMap(map);
+      });
+      return unsubscribe;
+    }
+
     setRoomPeersMap(loadRoomSnapshot(cleanRoom));
 
     let channel = null;
@@ -136,6 +163,12 @@ export default function App() {
       status: gameState.status,
       trail: gameState.trail,
     };
+
+    if (isSupabaseConfigured) {
+      upsertPlayerToSupabase(cleanRoom, payload);
+      return;
+    }
+
     const nextMap = savePlayerToRoom(cleanRoom, payload);
     setRoomPeersMap(nextMap);
     channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
@@ -200,6 +233,7 @@ export default function App() {
     setCardHintBanner(null);
     setDockToast(null);
     setShowSettlement(false);
+    clearLocalGameState();
     setGameState(createInitialGameState());
     setActiveTab('helm');
   };
@@ -278,8 +312,11 @@ export default function App() {
     }));
   };
 
-  const handleClearRoom = () => {
+  const handleClearRoom = async () => {
     const cleanRoom = roomCode.trim() || 'HIST-101';
+    if (isSupabaseConfigured) {
+      await clearRoomInSupabase(cleanRoom);
+    }
     clearRoomSnapshot(cleanRoom);
     setRoomPeersMap({});
     channelRef.current?.postMessage({ type: 'CLEAR_ROOM' });
@@ -474,6 +511,7 @@ export default function App() {
               allFleets={allFleets}
               nearbyFleets={nearbyFleets}
               myClientId={clientId}
+              isOnlineSync={isSupabaseConfigured}
               onOpenTeacherMode={() => setIsTeacherMode(true)}
             />
           )}

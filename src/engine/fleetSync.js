@@ -1,4 +1,9 @@
+import { isSupabaseConfigured, supabase } from './supabaseClient.js';
+
 const STORAGE_PREFIX = 'age_of_sail_room_v1_';
+const GAME_STATE_KEY = 'age_of_sail_saved_game_v1';
+
+export { isSupabaseConfigured };
 
 export function getOrCreateClientId() {
   try {
@@ -10,6 +15,34 @@ export function getOrCreateClientId() {
     return id;
   } catch {
     return `fleet-${Math.random().toString(36).slice(2, 9)}`;
+  }
+}
+
+export function saveLocalGameState(state, meta) {
+  try {
+    localStorage.setItem(
+      GAME_STATE_KEY,
+      JSON.stringify({ state, meta, savedAt: Date.now() }),
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadLocalGameState() {
+  try {
+    const raw = localStorage.getItem(GAME_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLocalGameState() {
+  try {
+    localStorage.removeItem(GAME_STATE_KEY);
+  } catch {
+    // Ignore
   }
 }
 
@@ -50,9 +83,115 @@ export function clearRoomSnapshot(roomCode) {
   }
 }
 
+function rowToFleet(row) {
+  return {
+    clientId: row.client_id,
+    teamName: row.team_name,
+    turn: row.turn,
+    lat: row.lat,
+    lon: row.lon,
+    headingDeg: row.heading_deg,
+    food: row.food,
+    hull: row.hull,
+    gold: row.gold,
+    cargoCount: row.cargo_count,
+    lastEvent: row.last_event,
+    status: row.status,
+    trail: Array.isArray(row.trail) ? row.trail : [],
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+  };
+}
+
+export async function fetchRoomFleetsFromSupabase(roomCode) {
+  if (!supabase || !roomCode) return {};
+  const { data, error } = await supabase
+    .from('fleets')
+    .select('*')
+    .eq('room_code', roomCode);
+
+  if (error) {
+    console.warn('[Supabase] fetchRoomFleets error:', error.message);
+    return {};
+  }
+
+  const map = {};
+  for (const row of data || []) {
+    map[row.client_id] = rowToFleet(row);
+  }
+  return map;
+}
+
+export async function upsertPlayerToSupabase(roomCode, playerPayload) {
+  if (!supabase || !roomCode || !playerPayload?.clientId) return;
+  const { error } = await supabase.from('fleets').upsert(
+    {
+      room_code: roomCode,
+      client_id: playerPayload.clientId,
+      team_name: playerPayload.teamName,
+      turn: playerPayload.turn,
+      lat: playerPayload.lat,
+      lon: playerPayload.lon,
+      heading_deg: playerPayload.headingDeg,
+      food: playerPayload.food,
+      hull: playerPayload.hull,
+      gold: playerPayload.gold,
+      cargo_count: playerPayload.cargoCount,
+      last_event: playerPayload.lastEvent,
+      status: playerPayload.status,
+      trail: playerPayload.trail,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'room_code,client_id' },
+  );
+  if (error) {
+    console.warn('[Supabase] upsert error:', error.message);
+  }
+}
+
+export async function clearRoomInSupabase(roomCode) {
+  if (!supabase || !roomCode) return;
+  const { error } = await supabase
+    .from('fleets')
+    .delete()
+    .eq('room_code', roomCode);
+  if (error) {
+    console.warn('[Supabase] clearRoom error:', error.message);
+  }
+}
+
+export function subscribeToRoomSupabase(roomCode, onSnapshot) {
+  if (!supabase || !roomCode) return () => {};
+
+  const refresh = async () => {
+    const map = await fetchRoomFleetsFromSupabase(roomCode);
+    onSnapshot(map);
+  };
+
+  refresh();
+
+  const channel = supabase
+    .channel(`fleets-${roomCode}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'fleets',
+        filter: `room_code=eq.${roomCode}`,
+      },
+      () => {
+        refresh();
+      },
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 /**
  * Generate realistic demo rival student fleets for classroom preview & radar testing.
- * Positioned along historical routes progressing by turn.
  */
 export function getDemoRivalFleets(currentTurn) {
   const t = Math.max(1, Math.min(30, currentTurn));

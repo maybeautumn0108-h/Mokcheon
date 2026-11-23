@@ -1,5 +1,7 @@
-import React from 'react';
-import { Monitor, Radio, Ship, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { Lock, Monitor, Radio, Ship, Users, Wifi, WifiOff } from 'lucide-react';
+
+const TEACHER_PIN = (import.meta.env?.VITE_TEACHER_PIN || '1492').trim();
 
 export default function FleetTab({
   roomCode,
@@ -11,26 +13,104 @@ export default function FleetTab({
   allFleets,
   nearbyFleets,
   myClientId,
+  isOnlineSync,
   onOpenTeacherMode,
 }) {
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+
+  const handlePinSubmit = (e) => {
+    e.preventDefault();
+    if (pinInput.trim() === TEACHER_PIN) {
+      setShowPinPrompt(false);
+      setPinInput('');
+      setPinError(false);
+      onOpenTeacherMode();
+    } else {
+      setPinError(true);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {/* Room & Team Setup */}
       <section className="rounded-2xl border border-amber-500/25 bg-slate-900/95 p-3.5 shadow-lg space-y-2.5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
             <Users className="w-4 h-4" />
             수업방 접속 & 선단 설정
           </h2>
           <button
             type="button"
-            onClick={onOpenTeacherMode}
+            onClick={() => {
+              setShowPinPrompt((v) => !v);
+              setPinError(false);
+            }}
             className="inline-flex items-center gap-1 rounded-lg border border-sky-400/50 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1 text-[11px] font-black text-sky-200 transition cursor-pointer"
           >
             <Monitor className="w-3.5 h-3.5" />
             교사용 모드
           </button>
         </div>
+
+        {/* Online Sync Indicator */}
+        <div
+          className={`flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${
+            isOnlineSync
+              ? 'border-emerald-500/40 bg-emerald-950/35 text-emerald-200'
+              : 'border-slate-700/80 bg-slate-950/60 text-slate-400'
+          }`}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            {isOnlineSync ? (
+              <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <WifiOff className="w-3.5 h-3.5 text-slate-500" />
+            )}
+            {isOnlineSync
+              ? 'Supabase 실시간 온라인 연동 활성'
+              : '로컬 모드 (동일 브라우저 탭 간 연동)'}
+          </span>
+          <span className="text-[10px] opacity-80">{roomCode || 'HIST-101'}</span>
+        </div>
+
+        {/* Teacher PIN Prompt */}
+        {showPinPrompt && (
+          <form
+            onSubmit={handlePinSubmit}
+            className="rounded-xl border border-sky-500/40 bg-slate-950/90 p-3 space-y-2"
+          >
+            <div className="text-xs font-bold text-sky-200 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-sky-400" />
+              교사 전용 관제 비밀번호 입력
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                value={pinInput}
+                onChange={(e) => {
+                  setPinInput(e.target.value);
+                  setPinError(false);
+                }}
+                placeholder="비밀번호 4자리"
+                className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-white"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-sky-500 hover:bg-sky-400 px-3 py-1.5 text-xs font-black text-slate-950 cursor-pointer"
+              >
+                입장
+              </button>
+            </div>
+            {pinError && (
+              <div className="text-[11px] text-rose-300">
+                비밀번호가 일치하지 않습니다.
+              </div>
+            )}
+          </form>
+        )}
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
@@ -74,8 +154,7 @@ export default function FleetTab({
         </h3>
         {nearbyFleets.length === 0 ? (
           <div className="text-xs text-slate-400">
-            현재 반경 2.5 cm 이내에 포착된 다른 선단이 없습니다. (같은 브라우저의 다른 탭을 열어
-            동일한 방 코드로 접속하면 실시간 연동됩니다)
+            현재 반경 2.5 cm 이내에 포착된 다른 선단이 없습니다.
           </div>
         ) : (
           <div className="space-y-1.5">
