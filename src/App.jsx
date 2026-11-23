@@ -22,6 +22,8 @@ import TradeLogTab from './components/TradeLogTab.jsx';
 import FleetTab from './components/FleetTab.jsx';
 import TeacherModeView from './components/TeacherModeView.jsx';
 import LobbyView from './components/LobbyView.jsx';
+import ActivityStepPanel from './components/ActivityStepPanel.jsx';
+import InteractionModal from './components/InteractionModal.jsx';
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { MAX_TURNS, getTurnInfo } from './data/calendar.js';
 import {
@@ -31,30 +33,44 @@ import {
   calculateFinalSettlement,
   computePlannedMove,
   createInitialGameState,
-  executeDockTurn,
+  enterPortInActivity,
   executeSailTurn,
   findNearbyPort,
+  finishActivityTurn,
   getNearbyFleets,
+  holdPositionTurn,
   repairHull,
   sellCargoItem,
 } from './engine/navigation.js';
+import {
+  RPS_OPTIONS,
+  advanceBattleState,
+  applyBattleToState,
+  applyFleeBattleToState,
+  applyTradeToState,
+  createInitialBattlePayload,
+} from './engine/interactions.js';
 import {
   areAllFleetsReadyForNextTurn,
   clearLocalGameState,
   clearRoomInSupabase,
   clearRoomSnapshot,
+  createInteractionSupabase,
   fetchOrCreateRoomSupabase,
   getDemoRivalFleets,
   getOrCreateClientId,
   isSupabaseConfigured,
   loadLocalGameState,
+  loadLocalInteractions,
   loadLocalRoomMeta,
   loadRoomSnapshot,
   saveLocalGameState,
+  saveLocalInteractions,
   saveLocalRoomMeta,
   savePlayerToRoom,
   subscribeToRoomAndFleetsSupabase,
   tryAdvanceRoomTurnSupabase,
+  updateInteractionSupabase,
   updateRoomInSupabase,
   upsertPlayerToSupabase,
 } from './engine/fleetSync.js';
@@ -88,7 +104,7 @@ export default function App() {
     () => savedSnapshot?.state || createInitialGameState(),
   );
   const [playMode, setPlayMode] = useState(
-    () => savedSnapshot?.meta?.playMode || 'lobby', // 'lobby' | 'online' | 'solo'
+    () => savedSnapshot?.meta?.playMode || 'lobby',
   );
   const [joinedLobbyRoom, setJoinedLobbyRoom] = useState(
     () => Boolean(savedSnapshot?.meta?.joinedLobbyRoom),
@@ -121,11 +137,16 @@ export default function App() {
     phase: 'waiting',
     currentTurn: 1,
   });
+  const [interactions, setInteractions] = useState([]);
+  const [draftTradePeer, setDraftTradePeer] = useState(null);
+  const [localDemoInteraction, setLocalDemoInteraction] = useState(null);
+  const [dismissedInteractionIds, setDismissedInteractionIds] = useState(() => new Set());
   const [isTeacherMode, setIsTeacherMode] = useState(false);
 
   const sailTimerRef = useRef(null);
   const channelRef = useRef(null);
   const prevRoomTurnRef = useRef(1);
+  const appliedInteractionIdsRef = useRef(new Set());
 
   const cleanRoom = roomCode.trim() || 'HIST-101';
   const isOnlineSession = playMode === 'online' || (playMode === 'lobby' && joinedLobbyRoom);
@@ -136,7 +157,6 @@ export default function App() {
     };
   }, []);
 
-  // Persist game state & lobby metadata locally for mobile refresh recovery
   useEffect(() => {
     saveLocalGameState(gameState, {
       playMode,
@@ -147,7 +167,7 @@ export default function App() {
     });
   }, [gameState, playMode, joinedLobbyRoom, isSpectatorHost, cleanRoom, teamName]);
 
-  // Subscribe to Room & Fleets whenever inside online waiting room or online game
+  // Subscribe to Room, Fleets, and Interactions
   useEffect(() => {
     if (!isOnlineSession) return;
 
@@ -155,12 +175,14 @@ export default function App() {
       const unsubscribe = subscribeToRoomAndFleetsSupabase(cleanRoom, clientId, {
         onRoomChange: (rm) => setRoomMeta(rm),
         onFleetsChange: (map) => setRoomPeersMap(map),
+        onInteractionsChange: (list) => setInteractions(list),
       });
       return unsubscribe;
     }
 
     setRoomPeersMap(loadRoomSnapshot(cleanRoom));
     setRoomMeta(loadLocalRoomMeta(cleanRoom, clientId));
+    setInteractions(loadLocalInteractions(cleanRoom));
 
     let channel = null;
     if (typeof BroadcastChannel !== 'undefined') {
@@ -171,8 +193,11 @@ export default function App() {
           setRoomPeersMap(loadRoomSnapshot(cleanRoom));
         } else if (ev.data?.type === 'SYNC_ROOM') {
           setRoomMeta(loadLocalRoomMeta(cleanRoom, clientId));
+        } else if (ev.data?.type === 'SYNC_INTERACTIONS') {
+          setInteractions(loadLocalInteractions(cleanRoom));
         } else if (ev.data?.type === 'CLEAR_ROOM') {
           setRoomPeersMap({});
+          setInteractions([]);
         }
       };
     }
@@ -182,6 +207,8 @@ export default function App() {
         setRoomPeersMap(loadRoomSnapshot(cleanRoom));
       } else if (ev.key === `age_of_sail_room_meta_v1_${cleanRoom}`) {
         setRoomMeta(loadLocalRoomMeta(cleanRoom, clientId));
+      } else if (ev.key === `age_of_sail_interactions_v1_${cleanRoom}`) {
+        setInteractions(loadLocalInteractions(cleanRoom));
       }
     };
     window.addEventListener('storage', onStorage);
@@ -193,7 +220,7 @@ export default function App() {
     };
   }, [isOnlineSession, cleanRoom, clientId]);
 
-  // Publish player's fleet row (spectator teacher host does NOT publish a blocking ship!)
+  // Publish player's fleet row
   useEffect(() => {
     if (!isOnlineSession || isSpectatorHost) return;
 
@@ -245,18 +272,19 @@ export default function App() {
     gameState.logs,
   ]);
 
-  // React to room phase transitions (waiting <-> playing <-> finished) & turn advances
+  // React to room phase transitions & turn advances
   useEffect(() => {
     if (!isOnlineSession) return;
 
     if (roomMeta.phase === 'waiting' && playMode === 'online') {
-      // Teacher reset the room back to waiting lobby
       setPlayMode('lobby');
       setJoinedLobbyRoom(true);
       setIsTeacherMode(false);
       setTurnOutcome(null);
       setDrawnCards(null);
       setShowSettlement(false);
+      setDraftTradePeer(null);
+      setLocalDemoInteraction(null);
       setGameState(createInitialGameState());
       prevRoomTurnRef.current = 1;
       return;
@@ -268,7 +296,6 @@ export default function App() {
       joinedLobbyRoom &&
       !isSpectatorHost
     ) {
-      // Host started the voyage! Enter simulator
       setPlayMode('online');
       prevRoomTurnRef.current = roomMeta.currentTurn;
       return;
@@ -279,11 +306,13 @@ export default function App() {
       setTurnToast(`제${roomMeta.currentTurn}턴이 시작되었습니다!`);
       setGameState((prev) => {
         if (prev.status !== 'active' || prev.turn >= roomMeta.currentTurn) return prev;
-        // Catch up a lagging player if teacher forced turn forward
         return {
           ...prev,
           turn: roomMeta.currentTurn,
+          activeTurn: roomMeta.currentTurn,
           completedTurn: Math.max(prev.completedTurn ?? 0, roomMeta.currentTurn - 1),
+          turnStep: 'sail',
+          interactedThisTurn: false,
         };
       });
     }
@@ -307,7 +336,7 @@ export default function App() {
     [roomPeersMap],
   );
 
-  // Auto-advance room turn when ALL active fleets have completed the current room turn
+  // Auto-advance room turn when ALL active fleets have completed current room turn
   useEffect(() => {
     if (!isOnlineSession || roomMeta.phase !== 'playing') return;
     if (!areAllFleetsReadyForNextTurn(realFleets, roomMeta.currentTurn)) return;
@@ -325,6 +354,58 @@ export default function App() {
       channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
     }
   }, [isOnlineSession, roomMeta, realFleets, cleanRoom]);
+
+  // Apply completed interaction outcome ONCE to local gameState
+  const allWatchedInteractions = useMemo(() => {
+    return localDemoInteraction ? [localDemoInteraction, ...interactions] : interactions;
+  }, [localDemoInteraction, interactions]);
+
+  useEffect(() => {
+    if (isSpectatorHost) return;
+    for (const inter of allWatchedInteractions) {
+      if (inter.status !== 'completed') continue;
+      if (appliedInteractionIdsRef.current.has(inter.id)) continue;
+      if (inter.initiatorId !== clientId && inter.targetId !== clientId) continue;
+
+      appliedInteractionIdsRef.current.add(inter.id);
+      const isInit = inter.initiatorId === clientId;
+      const peerName = isInit ? inter.targetName : inter.initiatorName;
+
+      if (inter.type === 'trade') {
+        setGameState((prev) => ({
+          ...applyTradeToState(prev, inter.payload, isInit, peerName),
+          interactedThisTurn: isInit ? true : prev.interactedThisTurn,
+        }));
+      } else if (inter.type === 'battle') {
+        const myRole = isInit ? 'initiator' : 'target';
+        const isWinner = inter.payload?.winnerRole === myRole;
+        setGameState((prev) => ({
+          ...applyBattleToState(prev, isWinner, peerName, inter.payload),
+          interactedThisTurn: isInit ? true : prev.interactedThisTurn,
+        }));
+      }
+    }
+  }, [allWatchedInteractions, clientId, isSpectatorHost]);
+
+  // Find active interaction modal candidate for this player
+  const activeInteraction = useMemo(() => {
+    if (isSpectatorHost) return null;
+    if (localDemoInteraction && !dismissedInteractionIds.has(localDemoInteraction.id)) {
+      return localDemoInteraction;
+    }
+    return (
+      interactions.find(
+        (inter) =>
+          (inter.initiatorId === clientId || inter.targetId === clientId) &&
+          !dismissedInteractionIds.has(inter.id) &&
+          (inter.status === 'pending' ||
+            inter.status === 'active' ||
+            inter.status === 'completed' ||
+            inter.status === 'declined' ||
+            inter.status === 'cancelled'),
+      ) || null
+    );
+  }, [interactions, localDemoInteraction, clientId, dismissedInteractionIds, isSpectatorHost]);
 
   const allFleets = useMemo(() => {
     const demos = showDemoRivals ? getDemoRivalFleets(gameState.turn) : [];
@@ -355,20 +436,22 @@ export default function App() {
   );
 
   const isHost = roomMeta?.hostClientId === clientId;
+  const turnStep = gameState.turnStep || 'sail';
   const isWaitingForOthers =
     playMode === 'online' &&
     gameState.status === 'active' &&
+    turnStep === 'sail' &&
     (gameState.completedTurn ?? 0) >= roomMeta.currentTurn &&
     !drawnCards &&
     !turnOutcome &&
     !isSailing;
 
   const canSail =
-    gameState.status === 'active' && !isSailing && !drawnCards && !isWaitingForOthers;
-  const canDock =
-    canSail &&
-    Boolean(nearbyPort) &&
-    !(gameState.isDocked && gameState.currentPortId === nearbyPort?.id);
+    gameState.status === 'active' &&
+    turnStep === 'sail' &&
+    !isSailing &&
+    !drawnCards &&
+    !isWaitingForOthers;
 
   // Lobby Handlers
   const handleJoinOnlineRoom = async () => {
@@ -413,6 +496,7 @@ export default function App() {
   const handleStartSoloPractice = () => {
     setIsSpectatorHost(false);
     setJoinedLobbyRoom(false);
+    setShowDemoRivals(true);
     setPlayMode('solo');
     setGameState(createInitialGameState());
     setActiveTab('helm');
@@ -424,6 +508,8 @@ export default function App() {
     setTurnOutcome(null);
     setDrawnCards(null);
     setShowSettlement(false);
+    setDraftTradePeer(null);
+    setLocalDemoInteraction(null);
     setPlayMode('lobby');
     setJoinedLobbyRoom(false);
     setIsSpectatorHost(false);
@@ -481,14 +567,17 @@ export default function App() {
       });
       if (updated) setRoomMeta(updated);
       setRoomPeersMap({});
+      setInteractions([]);
     } else {
       clearRoomSnapshot(cleanRoom);
+      saveLocalInteractions(cleanRoom, []);
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
         ...roomMeta,
         phase: 'waiting',
         currentTurn: 1,
       });
       setRoomPeersMap({});
+      setInteractions([]);
       setRoomMeta(nextMeta);
       channelRef.current?.postMessage({ type: 'CLEAR_ROOM' });
       channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
@@ -500,7 +589,9 @@ export default function App() {
       await clearRoomInSupabase(cleanRoom);
     }
     clearRoomSnapshot(cleanRoom);
+    saveLocalInteractions(cleanRoom, []);
     setRoomPeersMap({});
+    setInteractions([]);
     channelRef.current?.postMessage({ type: 'CLEAR_ROOM' });
   };
 
@@ -513,6 +604,8 @@ export default function App() {
     setDockToast(null);
     setTurnToast(null);
     setShowSettlement(false);
+    setDraftTradePeer(null);
+    setLocalDemoInteraction(null);
     clearLocalGameState();
     setGameState(createInitialGameState());
     setActiveTab('helm');
@@ -522,6 +615,7 @@ export default function App() {
     }
   };
 
+  // Step 1: Sail or Hold Position
   const handleSail = () => {
     if (!canSail) return;
     setDockToast(null);
@@ -538,6 +632,22 @@ export default function App() {
     }, 1900);
   };
 
+  const handleHoldPosition = () => {
+    if (!canSail) return;
+    setDockToast(null);
+    setTurnToast(null);
+    setCardHintBanner(null);
+    setGameState((prev) => {
+      const next = holdPositionTurn(prev);
+      if (next.status !== 'active') {
+        setShowSettlement(true);
+      } else {
+        setDrawnCards(drawThreeSituationCards());
+      }
+      return next;
+    });
+  };
+
   const handleCloseTurnModal = () => {
     const wasActive = gameState.status === 'active';
     setTurnOutcome(null);
@@ -548,6 +658,7 @@ export default function App() {
     }
   };
 
+  // Step 2: Confirm Situation Card -> transitions to Step 3 (Surrounding Activity)
   const handleConfirmCard = (card) => {
     const { nextState, hintText } = applySituationCardToState(gameState, card);
     setGameState(nextState);
@@ -558,18 +669,194 @@ export default function App() {
     }
   };
 
-  const handleDock = () => {
-    if (!canDock) return;
-    setTurnToast(null);
-    const { nextState, dockedPort } = executeDockTurn(gameState);
+  // Step 3: Port Visit & Finish Activity
+  const handleEnterPort = () => {
+    const { nextState, dockedPort } = enterPortInActivity(gameState);
     setGameState(nextState);
     if (nextState.status !== 'active') {
       setShowSettlement(true);
       return;
     }
     if (dockedPort) {
-      setDockToast(`${dockedPort.name} 정박 완료! 교역·일지 탭에서 보급과 특산품을 거래하세요.`);
+      setDockToast(`${dockedPort.name} 입항 완료! 교역·일지 탭에서 보급과 특산품을 거래하세요.`);
     }
+  };
+
+  const handleFinishActivity = () => {
+    setGameState((prev) => {
+      const next = finishActivityTurn(prev);
+      if (next.status !== 'active') {
+        setShowSettlement(true);
+      }
+      return next;
+    });
+  };
+
+  // Interaction Helpers (Supabase + Local + Demo AI)
+  const persistInteractionList = (updater) => {
+    const nextList = updater(loadLocalInteractions(cleanRoom));
+    saveLocalInteractions(cleanRoom, nextList);
+    setInteractions(nextList);
+    channelRef.current?.postMessage({ type: 'SYNC_INTERACTIONS' });
+  };
+
+  const handleSendTradeOffer = async (peer, offer) => {
+    setDraftTradePeer(null);
+    if (peer.isDemo) {
+      const demoId = `demo-trade-${Date.now()}`;
+      setLocalDemoInteraction({
+        id: demoId,
+        roomCode: cleanRoom,
+        turn: gameState.activeTurn || gameState.turn,
+        type: 'trade',
+        initiatorId: clientId,
+        initiatorName: teamName,
+        targetId: peer.clientId,
+        targetName: peer.teamName,
+        status: 'pending',
+        payload: offer,
+      });
+      setTimeout(() => {
+        setLocalDemoInteraction((cur) =>
+          cur && cur.id === demoId ? { ...cur, status: 'completed' } : cur,
+        );
+      }, 750);
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      await createInteractionSupabase({
+        roomCode: cleanRoom,
+        turn: gameState.activeTurn || gameState.turn,
+        type: 'trade',
+        initiatorId: clientId,
+        initiatorName: teamName.trim() || '탐험 선단',
+        targetId: peer.clientId,
+        targetName: peer.teamName,
+        payload: offer,
+      });
+    } else {
+      const item = {
+        id: `local-${Date.now()}`,
+        roomCode: cleanRoom,
+        turn: gameState.activeTurn || gameState.turn,
+        type: 'trade',
+        initiatorId: clientId,
+        initiatorName: teamName.trim() || '탐험 선단',
+        targetId: peer.clientId,
+        targetName: peer.teamName,
+        status: 'pending',
+        payload: offer,
+      };
+      persistInteractionList((prev) => [item, ...prev]);
+    }
+  };
+
+  const handleStartBattle = async (peer) => {
+    const initPayload = createInitialBattlePayload();
+    if (peer.isDemo) {
+      const demoId = `demo-battle-${Date.now()}`;
+      setLocalDemoInteraction({
+        id: demoId,
+        roomCode: cleanRoom,
+        turn: gameState.activeTurn || gameState.turn,
+        type: 'battle',
+        initiatorId: clientId,
+        initiatorName: teamName,
+        targetId: peer.clientId,
+        targetName: peer.teamName,
+        status: 'pending',
+        payload: initPayload,
+      });
+      setTimeout(() => {
+        setLocalDemoInteraction((cur) =>
+          cur && cur.id === demoId ? { ...cur, status: 'active' } : cur,
+        );
+      }, 650);
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      await createInteractionSupabase({
+        roomCode: cleanRoom,
+        turn: gameState.activeTurn || gameState.turn,
+        type: 'battle',
+        initiatorId: clientId,
+        initiatorName: teamName.trim() || '탐험 선단',
+        targetId: peer.clientId,
+        targetName: peer.teamName,
+        payload: initPayload,
+      });
+    } else {
+      const item = {
+        id: `local-${Date.now()}`,
+        roomCode: cleanRoom,
+        turn: gameState.activeTurn || gameState.turn,
+        type: 'battle',
+        initiatorId: clientId,
+        initiatorName: teamName.trim() || '탐험 선단',
+        targetId: peer.clientId,
+        targetName: peer.teamName,
+        status: 'pending',
+        payload: initPayload,
+      };
+      persistInteractionList((prev) => [item, ...prev]);
+    }
+  };
+
+  const patchInteraction = async (inter, patch) => {
+    if (inter.id.startsWith('demo-')) {
+      setLocalDemoInteraction((cur) => (cur ? { ...cur, ...patch } : null));
+      return;
+    }
+    if (isSupabaseConfigured) {
+      await updateInteractionSupabase(inter.id, patch);
+    } else {
+      persistInteractionList((prev) =>
+        prev.map((item) => (item.id === inter.id ? { ...item, ...patch } : item)),
+      );
+    }
+  };
+
+  const handleAcceptTrade = (inter) => patchInteraction(inter, { status: 'completed' });
+  const handleDeclineInteraction = (inter) => patchInteraction(inter, { status: 'declined' });
+  const handleCancelInteraction = (inter) => patchInteraction(inter, { status: 'cancelled' });
+  const handleAcceptBattle = (inter) => patchInteraction(inter, { status: 'active' });
+
+  const handleFleeBattle = async (inter) => {
+    setGameState((prev) => applyFleeBattleToState(prev, inter.initiatorName));
+    await patchInteraction(inter, { status: 'declined' });
+  };
+
+  const handleSubmitRpsChoice = async (inter, choice) => {
+    const actorRole = inter.initiatorId === clientId ? 'initiator' : 'target';
+    const { nextPayload, nextStatus } = advanceBattleState(inter.payload, actorRole, choice);
+    await patchInteraction(inter, { payload: nextPayload, status: nextStatus });
+
+    if (inter.id.startsWith('demo-') && nextStatus === 'active') {
+      const aiPick = RPS_OPTIONS[Math.floor(Math.random() * RPS_OPTIONS.length)].id;
+      setTimeout(() => {
+        setLocalDemoInteraction((cur) => {
+          if (!cur || cur.id !== inter.id) return cur;
+          const aiStep = advanceBattleState(cur.payload, 'target', aiPick);
+          return {
+            ...cur,
+            payload: aiStep.nextPayload,
+            status: aiStep.nextStatus,
+          };
+        });
+      }, 450);
+    }
+  };
+
+  const handleCloseCompletedInteraction = () => {
+    if (activeInteraction) {
+      setDismissedInteractionIds((prev) => new Set(prev).add(activeInteraction.id));
+      if (activeInteraction.id.startsWith('demo-')) {
+        setLocalDemoInteraction(null);
+      }
+    }
+    setDraftTradePeer(null);
   };
 
   const handleRecordObservation = (record) => {
@@ -801,55 +1088,70 @@ export default function App() {
                 weatherId={gameState.weatherId}
               />
 
-              <HelmWheel
-                headingDeg={gameState.headingDeg}
-                onChangeHeading={(headingDeg) =>
-                  setGameState((prev) => ({ ...prev, headingDeg }))
-                }
-                windEval={windEval}
-                isFullSail={gameState.isFullSail}
-                onToggleFullSail={() =>
-                  setGameState((prev) => ({ ...prev, isFullSail: !prev.isFullSail }))
-                }
-                disabled={!canSail}
-              />
+              {turnStep === 'activity' && gameState.status === 'active' ? (
+                <ActivityStepPanel
+                  activeTurn={gameState.activeTurn || Math.max(1, gameState.turn - 1)}
+                  nearbyPort={nearbyPort}
+                  isDocked={gameState.isDocked}
+                  nearbyFleets={nearbyFleets}
+                  interactedThisTurn={Boolean(gameState.interactedThisTurn)}
+                  onEnterPort={handleEnterPort}
+                  onOpenTradeShop={() => setActiveTab('log')}
+                  onStartTrade={(peer) => setDraftTradePeer(peer)}
+                  onStartBattle={handleStartBattle}
+                  onFinishTurn={handleFinishActivity}
+                />
+              ) : (
+                <>
+                  <HelmWheel
+                    headingDeg={gameState.headingDeg}
+                    onChangeHeading={(headingDeg) =>
+                      setGameState((prev) => ({ ...prev, headingDeg }))
+                    }
+                    windEval={windEval}
+                    isFullSail={gameState.isFullSail}
+                    onToggleFullSail={() =>
+                      setGameState((prev) => ({ ...prev, isFullSail: !prev.isFullSail }))
+                    }
+                    disabled={!canSail}
+                  />
 
-              {/* Primary Action Controls */}
-              <div className="grid grid-cols-3 gap-2 pt-0.5">
-                <button
-                  type="button"
-                  disabled={!canDock}
-                  onClick={handleDock}
-                  className={`col-span-1 flex items-center justify-center gap-1.5 rounded-2xl border py-3.5 text-xs font-black transition ${
-                    canDock
-                      ? 'border-emerald-400/50 bg-emerald-600/25 text-emerald-200 hover:bg-emerald-600/35 active:scale-95 cursor-pointer'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-500 cursor-not-allowed'
-                  }`}
-                >
-                  <Anchor className="w-4 h-4" />
-                  <span>기항지 정박</span>
-                </button>
+                  <div className="space-y-2 pt-0.5">
+                    <button
+                      type="button"
+                      disabled={!canSail}
+                      onClick={handleSail}
+                      className={`w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black shadow-lg transition ${
+                        canSail
+                          ? 'bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 cursor-pointer'
+                          : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <Navigation className="w-4 h-4" />
+                      <span>
+                        {isWaitingForOthers
+                          ? '다른 선단 턴 종료 대기 중...'
+                          : isSailing
+                            ? '항해 진행 중...'
+                            : `1단계 항해 실행 (자로 ${windEval.effectiveCm.toFixed(1)} cm)`}
+                      </span>
+                    </button>
 
-                <button
-                  type="button"
-                  disabled={!canSail}
-                  onClick={handleSail}
-                  className={`col-span-2 flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black shadow-lg transition ${
-                    canSail
-                      ? 'bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 cursor-pointer'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  }`}
-                >
-                  <Navigation className="w-4 h-4" />
-                  <span>
-                    {isWaitingForOthers
-                      ? '다른 선단 턴 종료 대기 중...'
-                      : isSailing
-                        ? '항해 진행 중...'
-                        : `항해 실행 (자로 ${windEval.effectiveCm.toFixed(1)} cm)`}
-                  </span>
-                </button>
-              </div>
+                    {canSail && (nearbyPort || nearbyFleets.length > 0) && (
+                      <button
+                        type="button"
+                        onClick={handleHoldPosition}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/35 hover:bg-emerald-950/55 py-2.5 text-xs font-bold text-emerald-200 transition cursor-pointer"
+                      >
+                        <Anchor className="w-3.5 h-3.5" />
+                        <span>
+                          이동 없이 현 해역 유지 (바로 2단계 카드 · 3단계 주변활동)
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -901,6 +1203,22 @@ export default function App() {
           key={`cards-turn-${gameState.turn}`}
           cards={drawnCards}
           onConfirmCard={handleConfirmCard}
+        />
+      )}
+      {(draftTradePeer || activeInteraction) && (
+        <InteractionModal
+          draftTradePeer={draftTradePeer}
+          activeInteraction={activeInteraction}
+          myClientId={clientId}
+          gameState={gameState}
+          onSendTradeOffer={handleSendTradeOffer}
+          onAcceptTrade={handleAcceptTrade}
+          onDeclineInteraction={handleDeclineInteraction}
+          onCancelInteraction={handleCancelInteraction}
+          onAcceptBattle={handleAcceptBattle}
+          onFleeBattle={handleFleeBattle}
+          onSubmitRpsChoice={handleSubmitRpsChoice}
+          onCloseCompleted={handleCloseCompletedInteraction}
         />
       )}
       {showSettlement && (

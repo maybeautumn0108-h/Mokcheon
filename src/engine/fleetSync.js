@@ -3,6 +3,7 @@ import { MAX_TURNS } from '../data/calendar.js';
 
 const STORAGE_PREFIX = 'age_of_sail_room_v1_';
 const ROOM_META_PREFIX = 'age_of_sail_room_meta_v1_';
+const INTERACTIONS_PREFIX = 'age_of_sail_interactions_v1_';
 const GAME_STATE_KEY = 'age_of_sail_saved_game_v1';
 
 export { isSupabaseConfigured };
@@ -300,33 +301,140 @@ export async function upsertPlayerToSupabase(roomCode, playerPayload) {
   }
 }
 
+function rowToInteraction(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    roomCode: row.room_code,
+    turn: row.turn,
+    type: row.type,
+    initiatorId: row.initiator_id,
+    initiatorName: row.initiator_name,
+    targetId: row.target_id,
+    targetName: row.target_name,
+    status: row.status,
+    payload: row.payload || {},
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+  };
+}
+
+export function loadLocalInteractions(roomCode) {
+  try {
+    const raw = localStorage.getItem(`${INTERACTIONS_PREFIX}${roomCode}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalInteractions(roomCode, list) {
+  try {
+    localStorage.setItem(`${INTERACTIONS_PREFIX}${roomCode}`, JSON.stringify(list));
+  } catch {
+    // Ignore
+  }
+  return list;
+}
+
+export async function fetchInteractionsSupabase(roomCode) {
+  if (!supabase || !roomCode) return [];
+  const { data, error } = await supabase
+    .from('interactions')
+    .select('*')
+    .eq('room_code', roomCode)
+    .order('created_at', { ascending: false })
+    .limit(40);
+  if (error) {
+    console.warn('[Supabase] fetchInteractions error:', error.message);
+    return [];
+  }
+  return (data || []).map(rowToInteraction);
+}
+
+export async function createInteractionSupabase({
+  roomCode,
+  turn,
+  type,
+  initiatorId,
+  initiatorName,
+  targetId,
+  targetName,
+  payload,
+}) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('interactions')
+    .insert({
+      room_code: roomCode,
+      turn,
+      type,
+      initiator_id: initiatorId,
+      initiator_name: initiatorName,
+      target_id: targetId,
+      target_name: targetName,
+      status: 'pending',
+      payload: payload || {},
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) {
+    console.warn('[Supabase] createInteraction error:', error.message);
+    return null;
+  }
+  return rowToInteraction(data);
+}
+
+export async function updateInteractionSupabase(id, patch) {
+  if (!supabase || !id) return null;
+  const dbPatch = {
+    updated_at: new Date().toISOString(),
+  };
+  if (patch.status !== undefined) dbPatch.status = patch.status;
+  if (patch.payload !== undefined) dbPatch.payload = patch.payload;
+
+  const { data, error } = await supabase
+    .from('interactions')
+    .update(dbPatch)
+    .eq('id', id)
+    .select()
+    .maybeSingle();
+  if (error) {
+    console.warn('[Supabase] updateInteraction error:', error.message);
+    return null;
+  }
+  return rowToInteraction(data);
+}
+
 export async function clearRoomInSupabase(roomCode) {
   if (!supabase || !roomCode) return;
-  const { error } = await supabase
-    .from('fleets')
-    .delete()
-    .eq('room_code', roomCode);
-  if (error) {
-    console.warn('[Supabase] clearRoom error:', error.message);
-  }
+  const [fRes, iRes] = await Promise.all([
+    supabase.from('fleets').delete().eq('room_code', roomCode),
+    supabase.from('interactions').delete().eq('room_code', roomCode),
+  ]);
+  if (fRes.error) console.warn('[Supabase] clearRoom fleets error:', fRes.error.message);
+  if (iRes.error) console.warn('[Supabase] clearRoom interactions error:', iRes.error.message);
 }
 
 export function subscribeToRoomAndFleetsSupabase(
   roomCode,
   clientId,
-  { onRoomChange, onFleetsChange },
+  { onRoomChange, onFleetsChange, onInteractionsChange },
 ) {
   if (!supabase || !roomCode) return () => {};
   let active = true;
 
   const refreshAll = async () => {
-    const [room, fleetsMap] = await Promise.all([
+    const [room, fleetsMap, interactions] = await Promise.all([
       fetchOrCreateRoomSupabase(roomCode, clientId),
       fetchRoomFleetsFromSupabase(roomCode),
+      fetchInteractionsSupabase(roomCode),
     ]);
     if (!active) return;
     if (room) onRoomChange?.(room);
     onFleetsChange?.(fleetsMap);
+    onInteractionsChange?.(interactions);
   };
 
   refreshAll();
@@ -361,9 +469,21 @@ export function subscribeToRoomAndFleetsSupabase(
         }
       },
     )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'interactions',
+        filter: `room_code=eq.${roomCode}`,
+      },
+      async () => {
+        const list = await fetchInteractionsSupabase(roomCode);
+        if (active) onInteractionsChange?.(list);
+      },
+    )
     .subscribe();
 
-  // Safety background sync every 4s in case mobile sleep drops a realtime packet
   const pollId = setInterval(() => {
     refreshAll();
   }, 4000);

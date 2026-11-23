@@ -25,7 +25,10 @@ export const SPOILAGE_THRESHOLD_TURNS = 6;
 export function createInitialGameState() {
   return {
     turn: 1,
+    activeTurn: 1,
     completedTurn: 0,
+    turnStep: 'sail', // 'sail' | 'card' | 'activity' | 'done'
+    interactedThisTurn: false,
     lat: LISBON_COORDS.lat,
     lon: LISBON_COORDS.lon,
     headingDeg: 205, // SSW initial course toward Canaries/Atlantic
@@ -367,7 +370,10 @@ export function executeSailTurn(state) {
   const nextState = {
     ...state,
     turn: nextStatus === 'active' ? nextTurn : state.turn,
+    activeTurn: state.turn,
     completedTurn: nextStatus === 'active' ? state.completedTurn : state.turn,
+    turnStep: nextStatus === 'active' ? 'card' : 'done',
+    interactedThisTurn: false,
     lat: moveResult.endLat,
     lon: moveResult.endLon,
     food: nextFood,
@@ -415,7 +421,45 @@ export function executeSailTurn(state) {
 }
 
 /**
- * Apply a selected Situation Card (3-choose-1) without altering coordinates.
+ * Step 1 alternative: Hold position in current waters (e.g. near port or rival fleet)
+ * and advance directly to Step 2 (Situation Card).
+ */
+export function holdPositionTurn(state) {
+  if (state.status !== 'active') return state;
+  const foodCost = Math.round(7 * (state.isSpoiled ? 1.5 : 1.0));
+  const nextFood = Math.max(0, state.food - foodCost);
+  const nextStatus =
+    nextFood <= 0 ? 'stranded' : state.turn >= MAX_TURNS ? 'timeup' : 'active';
+  const turnInfo = getTurnInfo(state.turn);
+
+  return {
+    ...state,
+    turn: nextStatus === 'active' ? state.turn + 1 : state.turn,
+    activeTurn: state.turn,
+    completedTurn: nextStatus === 'active' ? state.completedTurn : state.turn,
+    turnStep: nextStatus === 'active' ? 'card' : 'done',
+    interactedThisTurn: false,
+    food: nextFood,
+    nextTurnBonusCm: 0,
+    nextTurnMaxCm: null,
+    weatherId: rollWeather(state.lat),
+    status: nextStatus,
+    logs: [
+      {
+        turn: state.turn,
+        dateLabel: turnInfo.label,
+        type: 'sail',
+        title: `제${state.turn}턴 현 해역 정박·대기`,
+        detail: `이동 없이 주변 상황을 주시했습니다. (식량·식수 -${foodCost})`,
+      },
+      ...state.logs,
+    ],
+  };
+}
+
+/**
+ * Step 2: Apply a selected Situation Card (3-choose-1) without altering coordinates,
+ * then advance to Step 3 (Surrounding Activity: Port Visit or Ship Interaction).
  */
 export function applySituationCardToState(state, card) {
   if (!card) return { nextState: state, hintText: null };
@@ -431,18 +475,20 @@ export function applySituationCardToState(state, card) {
     else if (nextFood <= 0) nextStatus = 'stranded';
   }
 
-  const turnInfo = getTurnInfo(Math.max(1, state.turn - 1));
+  const resolvedTurn = state.activeTurn || Math.max(1, state.turn - 1);
+  const turnInfo = getTurnInfo(resolvedTurn);
   const detailParts = [card.effectSummary];
   if (cardHint) detailParts.push(cardHint);
 
   const nextState = {
     ...state,
     ...stateFields,
-    completedTurn: Math.max(state.completedTurn || 0, state.turn - 1),
+    completedTurn: nextStatus === 'active' ? state.completedTurn : resolvedTurn,
+    turnStep: nextStatus === 'active' ? 'activity' : 'done',
     status: nextStatus,
     logs: [
       {
-        turn: Math.max(1, state.turn - 1),
+        turn: resolvedTurn,
         dateLabel: turnInfo.label,
         type: 'card',
         title: `상황 카드: ${card.title}`,
@@ -453,6 +499,64 @@ export function applySituationCardToState(state, card) {
   };
 
   return { nextState, hintText: cardHint || null };
+}
+
+/**
+ * Step 3A: Dock at nearby port during the Surrounding Activity step (resets spoilage, opens Port Shop).
+ */
+export function enterPortInActivity(state) {
+  if (state.status !== 'active') return { nextState: state, dockedPort: null };
+  const port = findNearbyPort(state.lat, state.lon);
+  if (!port) return { nextState: state, dockedPort: null };
+
+  const resolvedTurn = state.activeTurn || Math.max(1, state.turn - 1);
+  const turnInfo = getTurnInfo(resolvedTurn);
+  const visitedPorts = state.visitedPorts.includes(port.id)
+    ? state.visitedPorts
+    : [...state.visitedPorts, port.id];
+
+  const isReturningHome = state.hasDepartedLisbon && port.id === 'lisbon';
+
+  const nextState = {
+    ...state,
+    turnsWithoutPort: 0,
+    isSpoiled: false,
+    isDocked: true,
+    currentPortId: port.id,
+    visitedPorts,
+    completedTurn: isReturningHome ? resolvedTurn : state.completedTurn,
+    turnStep: isReturningHome ? 'done' : state.turnStep,
+    status: isReturningHome ? 'returned' : state.status,
+    logs: [
+      {
+        turn: resolvedTurn,
+        dateLabel: turnInfo.label,
+        type: 'dock',
+        title: `${port.name} 기항지 입항`,
+        detail: `${port.region} 입항 완료 (식수 부패 해제${port.specialty ? ` · 특산품: ${port.specialty}` : ''})`,
+      },
+      ...state.logs,
+    ],
+  };
+
+  return { nextState, dockedPort: port };
+}
+
+/**
+ * Step 3B: Complete Surrounding Activity and finalize the current turn.
+ */
+export function finishActivityTurn(state) {
+  if (state.status !== 'active') return state;
+  const resolvedTurn = state.activeTurn || Math.max(1, state.turn - 1);
+  const nextStatus = resolvedTurn >= MAX_TURNS ? 'timeup' : 'active';
+
+  return {
+    ...state,
+    completedTurn: resolvedTurn,
+    turnStep: nextStatus === 'active' ? 'sail' : 'done',
+    interactedThisTurn: false,
+    status: nextStatus,
+  };
 }
 
 /**

@@ -83,7 +83,7 @@ export default function TurnResultModal({ outcome, onClose }) {
             풍향: {outcome.windClass.label} · 식량·식수 -{outcome.foodCost}
           </span>
           <span>
-            {outcome.nextStatus === 'active' ? '다음: 상황 카드 (3택 1)' : '항해 종료'}
+            {outcome.nextStatus === 'active' ? '다음: 2단계 상황 카드' : '항해 종료'}
           </span>
         </div>
 
@@ -92,7 +92,7 @@ export default function TurnResultModal({ outcome, onClose }) {
           onClick={onClose}
           className="mt-3.5 w-full rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] py-2.5 text-sm font-black text-slate-950 transition cursor-pointer"
         >
-          {outcome.nextStatus === 'active' ? '상황 카드 뽑기' : '최종 정산 보기'}
+          {outcome.nextStatus === 'active' ? '2단계: 상황 카드 뽑기' : '최종 정산 보기'}
         </button>
       </div>
     </div>

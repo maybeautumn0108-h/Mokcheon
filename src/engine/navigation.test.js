@@ -18,6 +18,15 @@ import {
 import { getWeatherById, rollWeather } from '../data/weather.js';
 import { areAllFleetsReadyForNextTurn } from './fleetSync.js';
 import {
+  advanceBattleState,
+  applyBattleToState,
+  applyTradeToState,
+  canAcceptTradeOffer,
+  createInitialBattlePayload,
+  resolveRpsRound,
+  validateTradeOffer,
+} from './interactions.js';
+import {
   SAFE_OFFSHORE_DEG,
   applySituationCardToState,
   buySpecialty,
@@ -25,9 +34,11 @@ import {
   calculateFinalSettlement,
   computePlannedMove,
   createInitialGameState,
+  enterPortInActivity,
   executeDockTurn,
   executeSailTurn,
   findNearbyPort,
+  finishActivityTurn,
   getNearbyFleets,
   repairHull,
   resolveMovement,
@@ -273,25 +284,46 @@ test('Weather-driven Quadrant difficulty blocks occluded shots and tightens stor
   assert.ok(['clear', 'partly_cloudy', 'fog', 'squall', 'storm'].includes(rollWeather(-40)));
 });
 
-test('Synchronized turn lockstep tracks completedTurn and waits until all active fleets finish', () => {
+test('3-step turn flow (1. Sail -> 2. Card -> 3. Activity) tracks turnStep and completedTurn', () => {
   let s1 = createInitialGameState();
   assert.equal(s1.completedTurn, 0);
+  assert.equal(s1.turnStep, 'sail');
 
-  // Sail Turn 1 -> completedTurn stays 0 until Situation Card is picked
+  // Step 1: Sail Turn 1 -> turnStep becomes 'card', completedTurn still 0
   const sailRes = executeSailTurn(s1);
   s1 = sailRes.nextState;
   assert.equal(s1.turn, 2);
+  assert.equal(s1.activeTurn, 1);
+  assert.equal(s1.turnStep, 'card');
   assert.equal(s1.completedTurn, 0);
 
-  // Pick Situation Card -> Turn 1 is now completed
+  // Step 2: Pick Situation Card -> turnStep becomes 'activity', completedTurn still 0
   const cardRes = applySituationCardToState(s1, SITUATION_CARDS[0]);
   s1 = cardRes.nextState;
-  assert.equal(s1.completedTurn, 1);
+  assert.equal(s1.turnStep, 'activity');
+  assert.equal(s1.completedTurn, 0);
 
-  // Docking also marks the turn completed
-  let s2 = { ...createInitialGameState(), hasDepartedLisbon: true };
-  const dockRes = executeDockTurn(s2);
-  assert.equal(dockRes.nextState.completedTurn, 1);
+  // Step 3: Finish Activity -> Turn 1 is finalized and turnStep resets to 'sail'
+  s1 = finishActivityTurn(s1);
+  assert.equal(s1.completedTurn, 1);
+  assert.equal(s1.turnStep, 'sail');
+
+  // Entering port during Step 3 docks without advancing turn again
+  let portState = {
+    ...createInitialGameState(),
+    lat: 15.0,
+    lon: -23.6,
+    activeTurn: 2,
+    turn: 3,
+    turnStep: 'activity',
+    hasDepartedLisbon: true,
+    isDocked: false,
+    currentPortId: null,
+  };
+  const entered = enterPortInActivity(portState);
+  assert.equal(entered.dockedPort?.id, 'caboverde');
+  assert.equal(entered.nextState.isDocked, true);
+  assert.equal(entered.nextState.isSpoiled, false);
 
   // Room lockstep check: 1조 done, 2조 still in Turn 1 -> NOT ready
   assert.equal(
@@ -317,4 +349,53 @@ test('Synchronized turn lockstep tracks completedTurn and waits until all active
     ),
     true,
   );
+});
+
+test('Ship-to-ship Best-of-3 Rock-Paper-Scissors battle and trade exchange logic', () => {
+  assert.equal(resolveRpsRound('rock', 'scissors'), 'initiator');
+  assert.equal(resolveRpsRound('rock', 'paper'), 'target');
+  assert.equal(resolveRpsRound('paper', 'paper'), 'draw');
+
+  let payload = createInitialBattlePayload();
+  // Round 1: draw (stays on round 1)
+  let step = advanceBattleState(payload, 'initiator', 'rock');
+  assert.equal(step.nextStatus, 'active');
+  step = advanceBattleState(step.nextPayload, 'target', 'rock');
+  assert.equal(step.nextStatus, 'active');
+  assert.equal(step.nextPayload.round, 1);
+  assert.equal(step.nextPayload.initiatorWins, 0);
+
+  // Round 1 replay: initiator wins (1-0)
+  step = advanceBattleState(step.nextPayload, 'initiator', 'scissors');
+  step = advanceBattleState(step.nextPayload, 'target', 'paper');
+  assert.equal(step.nextStatus, 'active');
+  assert.equal(step.nextPayload.initiatorWins, 1);
+  assert.equal(step.nextPayload.round, 2);
+
+  // Round 2: initiator wins (2-0 -> battle completed!)
+  step = advanceBattleState(step.nextPayload, 'initiator', 'rock');
+  step = advanceBattleState(step.nextPayload, 'target', 'scissors');
+  assert.equal(step.nextStatus, 'completed');
+  assert.equal(step.nextPayload.winnerRole, 'initiator');
+
+  const winnerState = applyBattleToState(createInitialGameState(), true, '2조', step.nextPayload);
+  assert.equal(winnerState.gold, 560);
+  const loserState = applyBattleToState(createInitialGameState(), false, '1조', step.nextPayload);
+  assert.equal(loserState.gold, 440);
+  assert.equal(loserState.hull, 85);
+
+  // Trade exchange: initiator gives 50G for 15 food
+  const offer = { giveType: 'gold', giveAmount: 50, wantType: 'food', wantAmount: 15 };
+  const sInit = { ...createInitialGameState(), gold: 200, food: 40 };
+  const sTarg = { ...createInitialGameState(), gold: 100, food: 80 };
+  assert.equal(validateTradeOffer(sInit, offer), null);
+  assert.equal(canAcceptTradeOffer(sTarg, offer), true);
+
+  const afterInit = applyTradeToState(sInit, offer, true, '2조');
+  assert.equal(afterInit.gold, 150);
+  assert.equal(afterInit.food, 55);
+
+  const afterTarg = applyTradeToState(sTarg, offer, false, '1조');
+  assert.equal(afterTarg.gold, 150);
+  assert.equal(afterTarg.food, 65);
 });
