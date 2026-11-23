@@ -43,6 +43,7 @@ import {
   executeDockTurn,
   executeSailTurn,
   findNearbyPort,
+  findVisiblePortLandmarks,
   finishActivityTurn,
   getNearbyFleets,
   repairHull,
@@ -104,6 +105,12 @@ test('Coastal sightings detect land within 6.0° at Lisbon without exposing cont
     assert.ok(s.distDeg <= 6.0);
     assert.equal('continent' in s, false);
   }
+
+  // Port horizon landmarks expose regional archStyle without leaking port names
+  const lms = findVisiblePortLandmarks(38.7, -9.1, 205, 8.5);
+  assert.ok(lms.length > 0);
+  assert.equal(lms[0].archStyle, 'iberia');
+  assert.equal('name' in lms[0], false);
 });
 
 test('Departing Lisbon SW sails cleanly into open Atlantic and triggers water spoilage after 6 turns', () => {

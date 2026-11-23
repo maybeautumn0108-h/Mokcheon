@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { Anchor, CloudRain, Compass, Navigation, Radio } from 'lucide-react';
 import { getCoastalSightings } from '../data/worldCoastlines.js';
 import { getWeatherById } from '../data/weather.js';
-import { COAST_SIGHT_RADIUS_DEG, FLEET_RADAR_RADIUS_DEG } from '../engine/navigation.js';
+import { COAST_SIGHT_RADIUS_DEG, FLEET_RADAR_RADIUS_DEG, findVisiblePortLandmarks } from '../engine/navigation.js';
+import PortHorizonLandmark from './PortHorizonLandmark.jsx';
 
 const FOV_HALF_DEG = 72;
 
@@ -115,6 +116,19 @@ export default function DeckView({
     [nearbyFleets],
   );
 
+  const visibleLandmarks = useMemo(
+    () =>
+      findVisiblePortLandmarks(lat, lon, headingDeg, 8.5)
+        .filter((lm) => Math.abs(lm.relBearing) <= FOV_HALF_DEG)
+        .map((lm) => {
+          const x = ((lm.relBearing + FOV_HALF_DEG) / (2 * FOV_HALF_DEG)) * 360;
+          const closeness = Math.max(0, 1 - lm.distDeg / 8.5);
+          const scale = 0.52 + closeness * 0.65;
+          return { ...lm, x, scale };
+        }),
+    [lat, lon, headingDeg],
+  );
+
   const closestRival = nearbyFleets[0] || null;
   const relWindDeg = ((windToDeg - headingDeg) % 360 + 360) % 360;
 
@@ -145,6 +159,10 @@ export default function DeckView({
           <div className="inline-flex items-center gap-1 rounded-full bg-emerald-950/85 backdrop-blur-sm border border-emerald-400/50 px-2.5 py-1 text-[11px] font-bold text-emerald-300">
             <Anchor className="w-3 h-3" />
             <span>기항지 반경 포착</span>
+          </div>
+        ) : visibleLandmarks.length > 0 ? (
+          <div className="inline-flex items-center gap-1 rounded-full bg-amber-950/85 backdrop-blur-sm border border-amber-400/50 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
+            <span>항구 건축물 시야 포착</span>
           </div>
         ) : proximitySummary ? (
           <div className="inline-flex items-center gap-1 rounded-full bg-amber-950/85 backdrop-blur-sm border border-amber-400/50 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
@@ -231,6 +249,16 @@ export default function DeckView({
                 opacity={0.55 + cliff.avgCloseness * 0.4}
               />
             </g>
+          ))}
+
+          {/* Regional Port Architectural Landmarks (within 8.5° / 0.85 cm, no names leaked!) */}
+          {visibleLandmarks.map((lm) => (
+            <PortHorizonLandmark
+              key={lm.id}
+              archStyle={lm.archStyle}
+              x={lm.x}
+              scale={lm.scale}
+            />
           ))}
 
           {/* Ocean Surface */}

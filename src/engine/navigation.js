@@ -112,6 +112,32 @@ export function findNearbyPort(lat, lon) {
 }
 
 /**
+ * Find port landmarks visible on the horizon (within 8.5° = 0.85 cm)
+ * returning only relative bearing, distance, and regional `archStyle` (NO port name leaked!).
+ */
+export function findVisiblePortLandmarks(lat, lon, headingDeg, maxRadiusDeg = 8.5) {
+  const results = [];
+  for (const port of PORTS) {
+    const dLat = port.lat - lat;
+    const dLon = shortestLonDelta(lon, port.lon);
+    const distDeg = Math.sqrt(dLat * dLat + dLon * dLon);
+    if (distDeg <= maxRadiusDeg) {
+      const absBearing = ((Math.atan2(dLon, dLat) * 180) / Math.PI + 360) % 360;
+      let relBearing = absBearing - headingDeg;
+      while (relBearing > 180) relBearing -= 360;
+      while (relBearing <= -180) relBearing += 360;
+      results.push({
+        id: port.id,
+        archStyle: port.archStyle || 'iberia',
+        distDeg: Number(distDeg.toFixed(2)),
+        relBearing: Number(relBearing.toFixed(1)),
+      });
+    }
+  }
+  return results.sort((a, b) => b.distDeg - a.distDeg); // Draw farthest first
+}
+
+/**
  * Compute blocked azimuth ranges around (lat, lon) within `lookaheadDeg`
  * so the student knows which steering directions are blocked by coastline.
  */

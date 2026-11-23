@@ -43,8 +43,13 @@ export default function TradeLogTab({
           </div>
         ) : (
           <div className="space-y-2.5">
-            <div className="text-[11px] text-emerald-300 font-semibold">
-              {dockedPort.region} 정박 중 · 출항 전 보급과 교역을 진행하세요.
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-2 space-y-0.5">
+              <div className="text-[11px] text-emerald-300 font-bold">
+                {dockedPort.region} 정박 중 · 출항 전 보급과 교역을 진행하세요.
+              </div>
+              {dockedPort.historyNote && (
+                <div className="text-[11px] text-slate-300">{dockedPort.historyNote}</div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
