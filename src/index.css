@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body {
+    overscroll-behavior-y: contain;
+    touch-action: manipulation;
+  }
+}
+
+@keyframes wave-sway {
+  0%, 100% {
+    transform: translateX(0px) translateY(0px);
+  }
+  50% {
+    transform: translateX(-10px) translateY(2px);
+  }
+}
+
+@keyframes ship-pitch {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-3px) rotate(-1.1deg);
+  }
+  75% {
+    transform: translateY(2px) rotate(1.1deg);
+  }
+}
+
+@keyframes sail-billow {
+  0%, 100% {
+    transform: scaleX(1) scaleY(1);
+  }
+  50% {
+    transform: scaleX(1.06) scaleY(0.98);
+  }
+}
+
+.animate-wave-sway {
+  animation: wave-sway 3.2s ease-in-out infinite;
+}
+
+.animate-ship-pitch {
+  animation: ship-pitch 1.1s ease-in-out infinite;
+}
+
+.animate-sail-billow {
+  animation: sail-billow 0.85s ease-in-out infinite;
+}
