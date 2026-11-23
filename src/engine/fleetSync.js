@@ -1,5 +1,13 @@
-import { isSupabaseConfigured, supabase } from './supabaseClient.js';
+import {
+  SUPABASE_PUBLISHABLE_KEY,
+  SUPABASE_URL,
+  isSupabaseConfigured,
+  supabase,
+} from './supabaseClient.js';
 import { MAX_TURNS } from '../data/calendar.js';
+
+export const OFFLINE_TIMEOUT_MS = 25000;
+export const HEARTBEAT_INTERVAL_MS = 8000;
 
 const STORAGE_PREFIX = 'age_of_sail_room_v1_';
 const ROOM_META_PREFIX = 'age_of_sail_room_meta_v1_';
@@ -218,16 +226,27 @@ export async function updateRoomInSupabase(roomCode, patch) {
   return rowToRoom(data);
 }
 
-export function areAllFleetsCardsReady(fleets, currentTurn) {
-  const realFleets = (fleets || []).filter((f) => !f.isDemo);
-  if (realFleets.length === 0) return false;
-  return realFleets.every(
-    (f) => f.status !== 'active' || (f.cardCompletedTurn ?? 0) >= currentTurn,
+export function isFleetOffline(fleet, nowMs = Date.now()) {
+  if (!fleet || fleet.isDemo) return false;
+  if (!fleet.updatedAt) return false;
+  return nowMs - fleet.updatedAt > OFFLINE_TIMEOUT_MS;
+}
+
+export function areAllFleetsCardsReady(fleets, currentTurn, nowMs = Date.now()) {
+  const onlineFleets = (fleets || []).filter(
+    (f) => !f.isDemo && !isFleetOffline(f, nowMs),
+  );
+  if (onlineFleets.length === 0) return false;
+  return onlineFleets.every(
+    (f) =>
+      f.status !== 'active' ||
+      (f.cardCompletedTurn ?? 0) >= currentTurn ||
+      (f.completedTurn ?? 0) >= currentTurn,
   );
 }
 
 /**
- * Atomically open Step 3 (activity phase) once all active fleets have finished Step 1+2 (sail & card).
+ * Atomically open Step 3 (activity phase) once all online active fleets have finished Step 1+2 (sail & card).
  */
 export async function tryOpenActivityPhaseSupabase(roomCode, currentTurn, fleets) {
   if (!supabase || !roomCode) return false;
@@ -254,12 +273,14 @@ export async function tryOpenActivityPhaseSupabase(roomCode, currentTurn, fleets
 }
 
 /**
- * Pure helper to determine whether all real fleets in the room have finished `currentTurn`.
+ * Pure helper to determine whether all online real fleets in the room have finished `currentTurn`.
  */
-export function areAllFleetsReadyForNextTurn(fleets, currentTurn) {
-  const realFleets = (fleets || []).filter((f) => !f.isDemo);
-  if (realFleets.length === 0) return false;
-  return realFleets.every(
+export function areAllFleetsReadyForNextTurn(fleets, currentTurn, nowMs = Date.now()) {
+  const onlineFleets = (fleets || []).filter(
+    (f) => !f.isDemo && !isFleetOffline(f, nowMs),
+  );
+  if (onlineFleets.length === 0) return false;
+  return onlineFleets.every(
     (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= currentTurn,
   );
 }
@@ -450,6 +471,59 @@ export async function updateInteractionSupabase(id, patch) {
   return rowToInteraction(data);
 }
 
+export async function touchFleetHeartbeatSupabase(roomCode, clientId) {
+  if (!supabase || !roomCode || !clientId) return;
+  await supabase
+    .from('fleets')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('room_code', roomCode)
+    .eq('client_id', clientId);
+}
+
+export async function deleteFleetSupabase(roomCode, clientId) {
+  if (!supabase || !roomCode || !clientId) return;
+  const { error } = await supabase
+    .from('fleets')
+    .delete()
+    .eq('room_code', roomCode)
+    .eq('client_id', clientId);
+  if (error) {
+    console.warn('[Supabase] deleteFleet error:', error.message);
+  }
+}
+
+export function deleteFleetKeepalive(roomCode, clientId) {
+  if (!isSupabaseConfigured || !roomCode || !clientId || typeof fetch === 'undefined') return;
+  const url = `${SUPABASE_URL}/rest/v1/fleets?room_code=eq.${encodeURIComponent(
+    roomCode,
+  )}&client_id=eq.${encodeURIComponent(clientId)}`;
+  try {
+    fetch(url, {
+      method: 'DELETE',
+      keepalive: true,
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+    });
+  } catch {
+    // Ignore unload network errors
+  }
+}
+
+export function deleteLocalPlayerFromRoom(roomCode, clientId) {
+  if (!roomCode || !clientId) return {};
+  const current = loadRoomSnapshot(roomCode);
+  if (!current[clientId]) return current;
+  const next = { ...current };
+  delete next[clientId];
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${roomCode}`, JSON.stringify(next));
+  } catch {
+    // Ignore
+  }
+  return next;
+}
 export async function clearRoomInSupabase(roomCode) {
   if (!supabase || !roomCode) return;
   const [fRes, iRes] = await Promise.all([
@@ -465,7 +539,7 @@ export function subscribeToRoomAndFleetsSupabase(
   clientId,
   { onRoomChange, onFleetsChange, onInteractionsChange },
 ) {
-  if (!supabase || !roomCode) return () => {};
+  if (!supabase || !roomCode) return { unsubscribe: () => {}, sendPing: () => {} };
   let active = true;
 
   const refreshAll = async () => {
@@ -483,7 +557,7 @@ export function subscribeToRoomAndFleetsSupabase(
   refreshAll();
 
   const channel = supabase
-    .channel(`room-sync-${roomCode}-${clientId}`)
+    .channel(`room-sync-${roomCode}`)
     .on(
       'postgres_changes',
       {
@@ -525,16 +599,30 @@ export function subscribeToRoomAndFleetsSupabase(
         if (active) onInteractionsChange?.(list);
       },
     )
+    .on('broadcast', { event: 'room_ping' }, () => {
+      if (active) refreshAll();
+    })
     .subscribe();
 
   const pollId = setInterval(() => {
     refreshAll();
-  }, 4000);
+  }, 2500);
 
-  return () => {
-    active = false;
-    clearInterval(pollId);
-    supabase.removeChannel(channel);
+  const sendPing = () => {
+    try {
+      channel.send({ type: 'broadcast', event: 'room_ping', payload: { from: clientId } });
+    } catch {
+      // Ignore
+    }
+  };
+
+  return {
+    sendPing,
+    unsubscribe: () => {
+      active = false;
+      clearInterval(pollId);
+      supabase.removeChannel(channel);
+    },
   };
 }
 

@@ -11,9 +11,11 @@ import {
   RefreshCw,
   RotateCcw,
   Ship,
+  UserX,
 } from 'lucide-react';
 import { LAND_POLYGONS } from '../data/worldCoastlines.js';
 import { PORTS } from '../data/ports.js';
+import { isFleetOffline } from '../engine/fleetSync.js';
 
 const FLEET_COLORS = ['#ef4444', '#38bdf8', '#22c55e', '#f59e0b', '#a855f7', '#ec4899'];
 
@@ -26,18 +28,23 @@ export default function TeacherModeView({
   onForceOpenActivity,
   onForceNextTurn,
   onResetToWaiting,
+  onKickFleet,
   onClearRoom,
 }) {
   const [hideMap, setHideMap] = useState(false);
 
   const realFleets = fleets.filter((f) => !f.isDemo);
+  const onlineRealFleets = realFleets.filter((f) => !isFleetOffline(f));
   const currentTurn = roomMeta?.currentTurn ?? 1;
   const phase = roomMeta?.phase ?? 'waiting';
   const turnPhase = roomMeta?.turnPhase ?? 'sail_card';
-  const cardsReadyCount = realFleets.filter(
-    (f) => f.status !== 'active' || (f.cardCompletedTurn ?? 0) >= currentTurn,
+  const cardsReadyCount = onlineRealFleets.filter(
+    (f) =>
+      f.status !== 'active' ||
+      (f.cardCompletedTurn ?? 0) >= currentTurn ||
+      (f.completedTurn ?? 0) >= currentTurn,
   ).length;
-  const readyCount = realFleets.filter(
+  const readyCount = onlineRealFleets.filter(
     (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= currentTurn,
   ).length;
 
@@ -68,8 +75,8 @@ export default function TeacherModeView({
                     : phase === 'finished'
                       ? '항해 종료'
                       : turnPhase === 'sail_card'
-                        ? `제${currentTurn}턴 항해·카드 (${cardsReadyCount}/${realFleets.length}팀)`
-                        : `제${currentTurn}턴 주변활동 (${readyCount}/${realFleets.length}팀)`}
+                        ? `제${currentTurn}턴 항해·카드 (${cardsReadyCount}/${onlineRealFleets.length}팀)`
+                        : `제${currentTurn}턴 주변활동 (${readyCount}/${onlineRealFleets.length}팀)`}
                 </strong>
               </div>
             </div>
@@ -294,16 +301,22 @@ export default function TeacherModeView({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
             {fleets.map((fleet, idx) => {
               const color = FLEET_COLORS[idx % FLEET_COLORS.length];
+              const offline = !fleet.isDemo && isFleetOffline(fleet);
               const isDoneThisTurn =
                 fleet.status !== 'active' ||
                 (turnPhase === 'sail_card'
-                  ? (fleet.cardCompletedTurn ?? 0) >= currentTurn
+                  ? (fleet.cardCompletedTurn ?? 0) >= currentTurn ||
+                    (fleet.completedTurn ?? 0) >= currentTurn
                   : (fleet.completedTurn ?? 0) >= currentTurn);
 
               return (
                 <div
                   key={fleet.clientId}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1"
+                  className={`rounded-xl border p-3 space-y-1 ${
+                    offline
+                      ? 'border-slate-800/70 bg-slate-950/40 opacity-65'
+                      : 'border-slate-800 bg-slate-950/70'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-black text-white flex items-center gap-1.5">
@@ -313,27 +326,46 @@ export default function TeacherModeView({
                       />
                       {fleet.teamName}
                     </span>
-                    {!fleet.isDemo && phase === 'playing' && (
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${
-                          isDoneThisTurn
-                            ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
-                            : 'bg-amber-500/15 border-amber-400/40 text-amber-300'
-                        }`}
-                      >
-                        {isDoneThisTurn ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3" />
-                            {currentTurn}턴 완료
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="w-3 h-3" />
-                            진행 중
-                          </>
-                        )}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {offline ? (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold border border-rose-500/40 bg-rose-950/50 text-rose-300">
+                          이탈(오프라인)
+                        </span>
+                      ) : (
+                        !fleet.isDemo &&
+                        phase === 'playing' && (
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${
+                              isDoneThisTurn
+                                ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                                : 'bg-amber-500/15 border-amber-400/40 text-amber-300'
+                            }`}
+                          >
+                            {isDoneThisTurn ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3" />
+                                {turnPhase === 'sail_card' ? '카드완료' : `${currentTurn}턴 완료`}
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3" />
+                                진행 중
+                              </>
+                            )}
+                          </span>
+                        )
+                      )}
+                      {!fleet.isDemo && onKickFleet && (
+                        <button
+                          type="button"
+                          onClick={() => onKickFleet(fleet.clientId)}
+                          title="방에서 제외"
+                          className="rounded p-1 text-slate-400 hover:text-rose-300 hover:bg-rose-950/50 cursor-pointer"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="text-[11px] text-slate-400">
                     금화 {fleet.gold}G · 식량 {fleet.food} · 내구도 {fleet.hull} · 특산품{' '}

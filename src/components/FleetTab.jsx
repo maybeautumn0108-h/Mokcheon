@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { isFleetOffline } from '../engine/fleetSync.js';
 
 const TEACHER_PIN = (import.meta.env?.VITE_TEACHER_PIN || '1492').trim();
 
@@ -208,15 +209,23 @@ export default function FleetTab({
           {allFleets.map((fleet) => {
             const isMe = fleet.clientId === myClientId;
             const currentTurn = roomMeta?.currentTurn ?? 1;
+            const turnPhase = roomMeta?.turnPhase ?? 'sail_card';
+            const offline = !fleet.isDemo && isFleetOffline(fleet);
             const isDone =
-              fleet.status !== 'active' || (fleet.completedTurn ?? 0) >= currentTurn;
+              fleet.status !== 'active' ||
+              (turnPhase === 'sail_card'
+                ? (fleet.cardCompletedTurn ?? 0) >= currentTurn ||
+                  (fleet.completedTurn ?? 0) >= currentTurn
+                : (fleet.completedTurn ?? 0) >= currentTurn);
             return (
               <div
                 key={fleet.clientId}
                 className={`rounded-xl border px-3 py-2 text-xs ${
-                  isMe
-                    ? 'border-amber-400/50 bg-amber-500/10'
-                    : 'border-slate-800 bg-slate-950/60'
+                  offline
+                    ? 'border-slate-800/60 bg-slate-950/35 opacity-55'
+                    : isMe
+                      ? 'border-amber-400/50 bg-amber-500/10'
+                      : 'border-slate-800 bg-slate-950/60'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -227,15 +236,19 @@ export default function FleetTab({
                     {playMode === 'online' && !fleet.isDemo && (
                       <span
                         className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                          isDone
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-amber-500/20 text-amber-300'
+                          offline
+                            ? 'bg-rose-500/20 text-rose-300'
+                            : isDone
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-amber-500/20 text-amber-300'
                         }`}
                       >
-                        {isDone ? (
+                        {offline ? (
+                          '이탈'
+                        ) : isDone ? (
                           <>
                             <CheckCircle2 className="w-3 h-3" />
-                            완료
+                            {turnPhase === 'sail_card' ? '카드완료' : '턴완료'}
                           </>
                         ) : (
                           <>
@@ -246,7 +259,7 @@ export default function FleetTab({
                       </span>
                     )}
                     <span className="text-[11px] font-bold text-amber-300 tabular-nums">
-                      {fleet.turn}/30턴 · {fleet.gold}G
+                      {Math.min(30, fleet.turn)}/30턴 · {fleet.gold}G
                     </span>
                   </div>
                 </div>

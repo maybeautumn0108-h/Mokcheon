@@ -8,6 +8,7 @@ import {
   Monitor,
   Play,
   Ship,
+  Trash2,
   Users,
   Wifi,
   WifiOff,
@@ -30,6 +31,7 @@ export default function LobbyView({
   onStartSoloPractice,
   onLeaveRoom,
   onHostStartVoyage,
+  onKickFleet,
   onOpenTeacherMode,
 }) {
   const [showPinBox, setShowPinBox] = useState(false);
@@ -243,9 +245,21 @@ export default function LobbyView({
                               </span>
                             )}
                           </span>
-                          <span className="text-[11px] text-emerald-300 font-semibold">
-                            출항 준비 완료
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-emerald-300 font-semibold">
+                              출항 준비 완료
+                            </span>
+                            {isHost && !isMe && onKickFleet && (
+                              <button
+                                type="button"
+                                onClick={() => onKickFleet(f.clientId)}
+                                title="목록에서 제외"
+                                className="rounded p-1 text-slate-400 hover:text-rose-300 hover:bg-rose-950/50 cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

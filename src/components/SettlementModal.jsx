@@ -1,7 +1,7 @@
 import React from 'react';
 import { Award, Coins, Flag, RotateCcw, Ship } from 'lucide-react';
 
-export default function SettlementModal({ settlement, state, onReset, onClose }) {
+export default function SettlementModal({ settlement, state, canReset = true, onReset, onClose }) {
   if (!settlement) return null;
 
   const isSuccess = settlement.outcomeType === 'returned';
@@ -100,7 +100,7 @@ export default function SettlementModal({ settlement, state, onReset, onClose })
           </div>
         </div>
 
-        <div className="mt-3.5 grid grid-cols-2 gap-2">
+        <div className={`mt-3.5 grid gap-2 ${canReset ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <button
             type="button"
             onClick={onClose}
@@ -108,14 +108,16 @@ export default function SettlementModal({ settlement, state, onReset, onClose })
           >
             일지 살펴보기
           </button>
-          <button
-            type="button"
-            onClick={onReset}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 py-2.5 text-xs font-black text-slate-950 transition cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            새 항해 시작
-          </button>
+          {canReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 py-2.5 text-xs font-black text-slate-950 transition cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              새 항해 시작
+            </button>
+          )}
         </div>
       </div>
     </div>

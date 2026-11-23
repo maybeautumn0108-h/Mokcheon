@@ -17,8 +17,10 @@ import {
 } from './quadrant.js';
 import { getWeatherById, rollWeather } from '../data/weather.js';
 import {
+  OFFLINE_TIMEOUT_MS,
   areAllFleetsCardsReady,
   areAllFleetsReadyForNextTurn,
+  isFleetOffline,
 } from './fleetSync.js';
 import {
   advanceBattleState,
@@ -372,6 +374,33 @@ test('3-step turn flow (1. Sail -> 2. Card -> 3. Activity) tracks turnStep and c
         { clientId: 'c', status: 'stranded', completedTurn: 0 },
       ],
       1,
+    ),
+    true,
+  );
+
+  // Disconnected/stale offline fleets (> 25s without heartbeat) do NOT block turn progression
+  const now = 1_000_000;
+  assert.equal(isFleetOffline({ updatedAt: now - OFFLINE_TIMEOUT_MS - 1000 }, now), true);
+  assert.equal(isFleetOffline({ updatedAt: now - 3000 }, now), false);
+  assert.equal(
+    areAllFleetsCardsReady(
+      [
+        { clientId: 'a', status: 'active', cardCompletedTurn: 2, updatedAt: now - 1000 },
+        { clientId: 'ghost', status: 'active', cardCompletedTurn: 0, updatedAt: now - 40000 },
+      ],
+      2,
+      now,
+    ),
+    true,
+  );
+  assert.equal(
+    areAllFleetsReadyForNextTurn(
+      [
+        { clientId: 'a', status: 'active', completedTurn: 2, updatedAt: now - 1000 },
+        { clientId: 'ghost', status: 'active', completedTurn: 0, updatedAt: now - 40000 },
+      ],
+      2,
+      now,
     ),
     true,
   );

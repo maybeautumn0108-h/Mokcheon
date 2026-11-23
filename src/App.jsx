@@ -51,15 +51,21 @@ import {
   createInitialBattlePayload,
 } from './engine/interactions.js';
 import {
+  HEARTBEAT_INTERVAL_MS,
   areAllFleetsCardsReady,
   areAllFleetsReadyForNextTurn,
   clearLocalGameState,
   clearRoomInSupabase,
   clearRoomSnapshot,
   createInteractionSupabase,
+  deleteFleetKeepalive,
+  deleteFleetSupabase,
+  deleteLocalPlayerFromRoom,
   fetchOrCreateRoomSupabase,
+  fetchRoomFleetsFromSupabase,
   getDemoRivalFleets,
   getOrCreateClientId,
+  isFleetOffline,
   isSupabaseConfigured,
   loadLocalGameState,
   loadLocalInteractions,
@@ -70,6 +76,7 @@ import {
   saveLocalRoomMeta,
   savePlayerToRoom,
   subscribeToRoomAndFleetsSupabase,
+  touchFleetHeartbeatSupabase,
   tryAdvanceRoomTurnSupabase,
   tryOpenActivityPhaseSupabase,
   updateInteractionSupabase,
@@ -145,11 +152,14 @@ export default function App() {
   const [localDemoInteraction, setLocalDemoInteraction] = useState(null);
   const [dismissedInteractionIds, setDismissedInteractionIds] = useState(() => new Set());
   const [isTeacherMode, setIsTeacherMode] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const sailTimerRef = useRef(null);
   const channelRef = useRef(null);
+  const sendPingRef = useRef(() => {});
   const prevRoomTurnRef = useRef(1);
   const prevRoomTurnPhaseRef = useRef('sail_card');
+  const prevCriticalSigRef = useRef('');
   const appliedInteractionIdsRef = useRef(new Set());
 
   const cleanRoom = roomCode.trim() || 'HIST-101';
@@ -176,12 +186,16 @@ export default function App() {
     if (!isOnlineSession) return;
 
     if (isSupabaseConfigured) {
-      const unsubscribe = subscribeToRoomAndFleetsSupabase(cleanRoom, clientId, {
+      const sub = subscribeToRoomAndFleetsSupabase(cleanRoom, clientId, {
         onRoomChange: (rm) => setRoomMeta(rm),
         onFleetsChange: (map) => setRoomPeersMap(map),
         onInteractionsChange: (list) => setInteractions(list),
       });
-      return unsubscribe;
+      sendPingRef.current = sub.sendPing;
+      return () => {
+        sendPingRef.current = () => {};
+        sub.unsubscribe();
+      };
     }
 
     setRoomPeersMap(loadRoomSnapshot(cleanRoom));
@@ -224,7 +238,55 @@ export default function App() {
     };
   }, [isOnlineSession, cleanRoom, clientId]);
 
-  // Publish player's fleet row
+  // Periodic tick to detect offline/departed fleets (> 25s without heartbeat)
+  useEffect(() => {
+    if (!isOnlineSession) return;
+    const id = setInterval(() => setNowTick(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, [isOnlineSession]);
+
+  // Presence heartbeat & automatic cleanup on tab close / pagehide
+  useEffect(() => {
+    if (!isOnlineSession || isSpectatorHost) return;
+
+    const sendHeartbeat = () => {
+      if (isSupabaseConfigured) {
+        touchFleetHeartbeatSupabase(cleanRoom, clientId);
+      } else {
+        const cur = loadRoomSnapshot(cleanRoom);
+        if (cur[clientId]) {
+          savePlayerToRoom(cleanRoom, cur[clientId]);
+          channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+        }
+      }
+    };
+
+    const hbId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    };
+    const onUnload = () => {
+      if (isSupabaseConfigured) {
+        deleteFleetKeepalive(cleanRoom, clientId);
+      } else {
+        deleteLocalPlayerFromRoom(cleanRoom, clientId);
+        channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onUnload);
+
+    return () => {
+      clearInterval(hbId);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onUnload);
+    };
+  }, [isOnlineSession, isSpectatorHost, cleanRoom, clientId]);
+
+  // Publish player's fleet row (immediate on turn/phase change, debounced on steering wheel drag)
   useEffect(() => {
     if (!isOnlineSession || isSpectatorHost) return;
 
@@ -247,10 +309,24 @@ export default function App() {
       trail: gameState.trail,
     };
 
+    const criticalSig = `${cleanRoom}|${teamName}|${gameState.turn}|${gameState.cardCompletedTurn}|${gameState.completedTurn}|${gameState.turnStep}|${gameState.status}|${gameState.gold}|${gameState.food}|${gameState.hull}`;
+    const isCriticalChange = criticalSig !== prevCriticalSigRef.current;
+    prevCriticalSigRef.current = criticalSig;
+
     if (isSupabaseConfigured) {
-      const timer = setTimeout(() => {
-        upsertPlayerToSupabase(cleanRoom, payload);
-      }, 350);
+      const pushNow = async () => {
+        await upsertPlayerToSupabase(cleanRoom, payload);
+        const freshMap = await fetchRoomFleetsFromSupabase(cleanRoom);
+        setRoomPeersMap(freshMap);
+        sendPingRef.current?.();
+      };
+
+      if (isCriticalChange) {
+        pushNow();
+        return;
+      }
+
+      const timer = setTimeout(pushNow, 300);
       return () => clearTimeout(timer);
     }
 
@@ -266,6 +342,7 @@ export default function App() {
     gameState.turn,
     gameState.cardCompletedTurn,
     gameState.completedTurn,
+    gameState.turnStep,
     gameState.lat,
     gameState.lon,
     gameState.headingDeg,
@@ -335,8 +412,16 @@ export default function App() {
       prevRoomTurnRef.current = roomMeta.currentTurn;
       prevRoomTurnPhaseRef.current = roomMeta.turnPhase || 'sail_card';
       setTurnToast(`제${roomMeta.currentTurn}턴이 시작되었습니다!`);
+      setTurnOutcome(null);
+      setDrawnCards(null);
+      setDraftTradePeer(null);
       setGameState((prev) => {
-        if (prev.status !== 'active' || prev.turn >= roomMeta.currentTurn) return prev;
+        if (prev.status !== 'active') return prev;
+        const alreadyOnNewTurn =
+          prev.turnStep === 'sail' &&
+          (prev.completedTurn ?? 0) >= roomMeta.currentTurn - 1 &&
+          prev.turn >= roomMeta.currentTurn;
+        if (alreadyOnNewTurn) return prev;
         return {
           ...prev,
           turn: roomMeta.currentTurn,
@@ -369,7 +454,12 @@ export default function App() {
     [roomPeersMap],
   );
 
-  // Barrier 1: Auto-open Step 3 (activity phase) once ALL active fleets complete Step 1+2 (sail & card)
+  const onlineRealFleets = useMemo(
+    () => realFleets.filter((f) => !isFleetOffline(f, nowTick)),
+    [realFleets, nowTick],
+  );
+
+  // Barrier 1: Auto-open Step 3 (activity phase) once ALL online fleets complete Step 1+2 (sail & card)
   useEffect(() => {
     if (
       !isOnlineSession ||
@@ -378,10 +468,12 @@ export default function App() {
     ) {
       return;
     }
-    if (!areAllFleetsCardsReady(realFleets, roomMeta.currentTurn)) return;
+    if (!areAllFleetsCardsReady(realFleets, roomMeta.currentTurn, nowTick)) return;
 
     if (isSupabaseConfigured) {
-      tryOpenActivityPhaseSupabase(cleanRoom, roomMeta.currentTurn, realFleets);
+      tryOpenActivityPhaseSupabase(cleanRoom, roomMeta.currentTurn, realFleets).then((ok) => {
+        if (ok) sendPingRef.current?.();
+      });
     } else {
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
         ...roomMeta,
@@ -390,9 +482,9 @@ export default function App() {
       setRoomMeta(nextMeta);
       channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
     }
-  }, [isOnlineSession, roomMeta, realFleets, cleanRoom]);
+  }, [isOnlineSession, roomMeta, realFleets, cleanRoom, nowTick]);
 
-  // Barrier 2: Auto-advance room turn when ALL active fleets have completed Step 3
+  // Barrier 2: Auto-advance room turn when ALL online fleets have completed Step 3
   useEffect(() => {
     if (
       !isOnlineSession ||
@@ -401,10 +493,12 @@ export default function App() {
     ) {
       return;
     }
-    if (!areAllFleetsReadyForNextTurn(realFleets, roomMeta.currentTurn)) return;
+    if (!areAllFleetsReadyForNextTurn(realFleets, roomMeta.currentTurn, nowTick)) return;
 
     if (isSupabaseConfigured) {
-      tryAdvanceRoomTurnSupabase(cleanRoom, roomMeta.currentTurn, realFleets);
+      tryAdvanceRoomTurnSupabase(cleanRoom, roomMeta.currentTurn, realFleets).then((ok) => {
+        if (ok) sendPingRef.current?.();
+      });
     } else {
       const isFinal = roomMeta.currentTurn >= MAX_TURNS;
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
@@ -416,7 +510,7 @@ export default function App() {
       setRoomMeta(nextMeta);
       channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
     }
-  }, [isOnlineSession, roomMeta, realFleets, cleanRoom]);
+  }, [isOnlineSession, roomMeta, realFleets, cleanRoom, nowTick]);
 
   // Apply completed interaction outcome ONCE to local gameState
   const allWatchedInteractions = useMemo(() => {
@@ -479,8 +573,8 @@ export default function App() {
   }, [realFleets, showDemoRivals, gameState.turn]);
 
   const otherFleets = useMemo(
-    () => allFleets.filter((f) => f.clientId !== clientId),
-    [allFleets, clientId],
+    () => allFleets.filter((f) => f.clientId !== clientId && !isFleetOffline(f, nowTick)),
+    [allFleets, clientId, nowTick],
   );
 
   const nearbyFleets = useMemo(
@@ -571,8 +665,9 @@ export default function App() {
     setActiveTab('helm');
   };
 
-  const handleLeaveToLobby = () => {
+  const handleLeaveToLobby = async () => {
     if (sailTimerRef.current) clearTimeout(sailTimerRef.current);
+    const wasPlayer = isOnlineSession && !isSpectatorHost;
     setIsSailing(false);
     setTurnOutcome(null);
     setDrawnCards(null);
@@ -582,6 +677,31 @@ export default function App() {
     setPlayMode('lobby');
     setJoinedLobbyRoom(false);
     setIsSpectatorHost(false);
+
+    if (wasPlayer) {
+      if (isSupabaseConfigured) {
+        await deleteFleetSupabase(cleanRoom, clientId);
+        sendPingRef.current?.();
+      } else {
+        const nextMap = deleteLocalPlayerFromRoom(cleanRoom, clientId);
+        setRoomPeersMap(nextMap);
+        channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+      }
+    }
+  };
+
+  const handleKickFleet = async (targetClientId) => {
+    if (!targetClientId) return;
+    if (isSupabaseConfigured) {
+      await deleteFleetSupabase(cleanRoom, targetClientId);
+      const freshMap = await fetchRoomFleetsFromSupabase(cleanRoom);
+      setRoomPeersMap(freshMap);
+      sendPingRef.current?.();
+    } else {
+      const nextMap = deleteLocalPlayerFromRoom(cleanRoom, targetClientId);
+      setRoomPeersMap(nextMap);
+      channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+    }
   };
 
   const handleHostStartVoyage = async () => {
@@ -991,6 +1111,7 @@ export default function App() {
         onForceOpenActivity={handleForceOpenActivity}
         onForceNextTurn={handleForceNextTurn}
         onResetToWaiting={handleResetToWaiting}
+        onKickFleet={handleKickFleet}
         onClearRoom={handleClearRoom}
       />
     );
@@ -1005,7 +1126,7 @@ export default function App() {
         onChangeTeamName={setTeamName}
         joinedRoom={joinedLobbyRoom}
         roomMeta={roomMeta}
-        realFleets={realFleets}
+        realFleets={onlineRealFleets}
         myClientId={clientId}
         isOnlineSync={isSupabaseConfigured}
         onJoinOnlineRoom={handleJoinOnlineRoom}
@@ -1013,23 +1134,38 @@ export default function App() {
         onStartSoloPractice={handleStartSoloPractice}
         onLeaveRoom={handleLeaveToLobby}
         onHostStartVoyage={handleHostStartVoyage}
+        onKickFleet={handleKickFleet}
         onOpenTeacherMode={() => setIsTeacherMode(true)}
       />
     );
   }
 
   const endMeta = END_MESSAGES[gameState.status];
-  const cardsReadyCount = realFleets.filter(
-    (f) => f.status !== 'active' || (f.cardCompletedTurn ?? 0) >= roomMeta.currentTurn,
+  const cardsReadyCount = onlineRealFleets.filter(
+    (f) =>
+      f.status !== 'active' ||
+      (f.cardCompletedTurn ?? 0) >= roomMeta.currentTurn ||
+      (f.completedTurn ?? 0) >= roomMeta.currentTurn,
   ).length;
-  const readyCount = realFleets.filter(
+  const readyCount = onlineRealFleets.filter(
     (f) => f.status !== 'active' || (f.completedTurn ?? 0) >= roomMeta.currentTurn,
   ).length;
+  const displayTurn =
+    playMode === 'online'
+      ? roomMeta.currentTurn
+      : gameState.turnStep === 'sail' && !isWaitingForOthers
+        ? gameState.turn
+        : gameState.activeTurn || gameState.turn;
 
   return (
     <div className="min-h-dvh bg-slate-950 text-slate-100 flex justify-center">
       <div className="w-full max-w-md min-h-dvh flex flex-col bg-slate-950 border-x border-slate-900 shadow-2xl">
-        <TopResourceBar state={gameState} onReset={handleReset} />
+        <TopResourceBar
+          state={gameState}
+          displayTurn={displayTurn}
+          canReset={playMode === 'solo'}
+          onReset={handleReset}
+        />
 
         <main className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
           {/* Synchronized Turn Waiting Banner */}
@@ -1040,7 +1176,7 @@ export default function App() {
                   <Clock className="w-4 h-4 animate-pulse" />
                   <span>
                     제{gameState.completedTurn}턴 완료! 다른 선단 대기 중 ({readyCount}/
-                    {Math.max(1, realFleets.length)}팀)
+                    {Math.max(1, onlineRealFleets.length)}팀)
                   </span>
                 </div>
                 {isHost && (
@@ -1056,7 +1192,7 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap gap-1.5">
-                {realFleets.map((f) => {
+                {onlineRealFleets.map((f) => {
                   const done =
                     f.status !== 'active' || (f.completedTurn ?? 0) >= roomMeta.currentTurn;
                   return (
@@ -1117,14 +1253,16 @@ export default function App() {
                   >
                     정산표
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    className="inline-flex items-center gap-1 rounded-lg bg-slate-900/80 border border-slate-700 px-2.5 py-1 text-xs font-bold text-white hover:bg-slate-800 cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    새 항해
-                  </button>
+                  {playMode === 'solo' && (
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      className="inline-flex items-center gap-1 rounded-lg bg-slate-900/80 border border-slate-700 px-2.5 py-1 text-xs font-bold text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      새 항해
+                    </button>
+                  )}
                 </div>
               </div>
               <p className="text-xs opacity-90 mt-1">{endMeta.desc}</p>
@@ -1192,7 +1330,7 @@ export default function App() {
                         <Clock className="w-4 h-4 text-sky-400 animate-pulse" />
                         <span>
                           2단계(카드) 완료! 전원 카드 완료 후 3단계 동시 개방 ({cardsReadyCount}/
-                          {Math.max(1, realFleets.length)}팀)
+                          {Math.max(1, onlineRealFleets.length)}팀)
                         </span>
                       </div>
                       {isHost && (
@@ -1213,10 +1351,11 @@ export default function App() {
                     </p>
 
                     <div className="flex flex-wrap gap-1.5">
-                      {realFleets.map((f) => {
+                      {onlineRealFleets.map((f) => {
                         const cardDone =
                           f.status !== 'active' ||
-                          (f.cardCompletedTurn ?? 0) >= roomMeta.currentTurn;
+                          (f.cardCompletedTurn ?? 0) >= roomMeta.currentTurn ||
+                          (f.completedTurn ?? 0) >= roomMeta.currentTurn;
                         return (
                           <span
                             key={f.clientId}
@@ -1375,6 +1514,7 @@ export default function App() {
         <SettlementModal
           settlement={settlement}
           state={gameState}
+          canReset={playMode === 'solo'}
           onReset={handleReset}
           onClose={() => setShowSettlement(false)}
         />

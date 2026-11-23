@@ -2,8 +2,9 @@ import React from 'react';
 import { Anchor, Compass, Coins, Droplets, HeartPulse, Package, AlertTriangle } from 'lucide-react';
 import { MAX_TURNS, getTurnInfo } from '../data/calendar.js';
 
-export default function TopResourceBar({ state, onReset }) {
-  const turnInfo = getTurnInfo(state.turn);
+export default function TopResourceBar({ state, displayTurn, canReset = false, onReset }) {
+  const shownTurn = displayTurn ?? state.turn;
+  const turnInfo = getTurnInfo(shownTurn);
   const foodLow = state.food <= 25;
   const hullLow = state.hull <= 30;
 
@@ -15,7 +16,7 @@ export default function TopResourceBar({ state, onReset }) {
           <div className="flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 px-2.5 py-0.5 text-xs font-bold text-amber-300">
             <Compass className="w-3.5 h-3.5" />
             <span>
-              턴 {state.turn}/{MAX_TURNS}
+              턴 {shownTurn}/{MAX_TURNS}
             </span>
             <span className="text-amber-200/70 font-medium">· {turnInfo.label}</span>
           </div>
@@ -32,14 +33,16 @@ export default function TopResourceBar({ state, onReset }) {
           ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={onReset}
-          title="항해 초기화"
-          className="text-[11px] font-medium text-slate-400 hover:text-amber-300 border border-slate-700/80 hover:border-amber-500/40 rounded-md px-2 py-0.5 transition-colors cursor-pointer"
-        >
-          초기화
-        </button>
+        {canReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            title="항해 초기화"
+            className="text-[11px] font-medium text-slate-400 hover:text-amber-300 border border-slate-700/80 hover:border-amber-500/40 rounded-md px-2 py-0.5 transition-colors cursor-pointer"
+          >
+            초기화
+          </button>
+        )}
       </div>
 
       {/* Row 2: 4 Core Resource Pills */}
