@@ -88,26 +88,26 @@ export default function LobbyView({
               <div className="space-y-2.5 text-xs">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                    수업방 코드
+                    게임방 코드 (예: 1조, 2조, 3조)
                   </label>
                   <input
                     type="text"
                     value={roomCode}
                     onChange={(e) => onChangeRoomCode(e.target.value.toUpperCase())}
-                    placeholder="예: HIST-101"
+                    placeholder="예: 1조"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm font-black text-amber-300 uppercase tracking-wide"
                   />
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                    우리 조 / 선단 이름
+                    내 선단 / 이름 (예: 김철수, 콜럼버스호)
                   </label>
                   <input
                     type="text"
                     value={teamName}
                     onChange={(e) => onChangeTeamName(e.target.value)}
-                    placeholder="예: 1조 콜럼버스"
+                    placeholder="예: 김철수"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm font-bold text-white"
                   />
                 </div>

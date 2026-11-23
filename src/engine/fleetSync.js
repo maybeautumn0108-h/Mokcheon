@@ -119,6 +119,39 @@ export function saveLocalRoomMeta(roomCode, meta) {
   return meta;
 }
 
+export function loadAllLocalRoomsMeta() {
+  const list = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(ROOM_META_PREFIX)) {
+        const raw = localStorage.getItem(k);
+        if (raw) list.push(JSON.parse(raw));
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  return list.sort((a, b) => (a.roomCode || '').localeCompare(b.roomCode || ''));
+}
+
+export function loadAllLocalFleets() {
+  const byRoom = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(STORAGE_PREFIX)) {
+        const roomCode = k.slice(STORAGE_PREFIX.length);
+        const raw = localStorage.getItem(k);
+        byRoom[roomCode] = raw ? JSON.parse(raw) : {};
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  return byRoom;
+}
+
 function rowToFleet(row) {
   return {
     clientId: row.client_id,
@@ -532,6 +565,113 @@ export async function clearRoomInSupabase(roomCode) {
   ]);
   if (fRes.error) console.warn('[Supabase] clearRoom fleets error:', fRes.error.message);
   if (iRes.error) console.warn('[Supabase] clearRoom interactions error:', iRes.error.message);
+}
+
+export async function deleteRoomInSupabase(roomCode) {
+  if (!supabase || !roomCode) return;
+  await clearRoomInSupabase(roomCode);
+  const { error } = await supabase
+    .from('rooms')
+    .delete()
+    .eq('room_code', roomCode);
+  if (error) {
+    console.warn('[Supabase] deleteRoom error:', error.message);
+  }
+}
+
+export async function fetchAllRoomsSupabase() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(40);
+  if (error) {
+    console.warn('[Supabase] fetchAllRooms error:', error.message);
+    return [];
+  }
+  return (data || []).map(rowToRoom);
+}
+
+export async function fetchAllFleetsGroupedSupabase() {
+  if (!supabase) return {};
+  const { data, error } = await supabase
+    .from('fleets')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(200);
+  if (error) {
+    console.warn('[Supabase] fetchAllFleets error:', error.message);
+    return {};
+  }
+  const grouped = {};
+  for (const row of data || []) {
+    const f = rowToFleet(row);
+    if (!grouped[row.room_code]) grouped[row.room_code] = {};
+    grouped[row.room_code][row.client_id] = f;
+  }
+  return grouped;
+}
+
+export async function ensureRoomsBatchSupabase(roomCodes, hostClientId) {
+  if (!supabase || !roomCodes?.length) return [];
+  const rows = roomCodes.map((rc) => ({
+    room_code: rc,
+    host_client_id: hostClientId,
+    phase: 'waiting',
+    current_turn: 1,
+    turn_phase: 'sail_card',
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase
+    .from('rooms')
+    .upsert(rows, { onConflict: 'room_code', ignoreDuplicates: true });
+  if (error) {
+    console.warn('[Supabase] ensureRoomsBatch error:', error.message);
+  }
+  // Also claim host ownership for teacher control
+  await supabase
+    .from('rooms')
+    .update({ host_client_id: hostClientId })
+    .in('room_code', roomCodes);
+  return fetchAllRoomsSupabase();
+}
+
+export function subscribeToAllRoomsSupabase({ onRoomsChange, onFleetsChange }) {
+  if (!supabase) return () => {};
+  let active = true;
+
+  const refreshAll = async () => {
+    const [rooms, fleetsByRoom] = await Promise.all([
+      fetchAllRoomsSupabase(),
+      fetchAllFleetsGroupedSupabase(),
+    ]);
+    if (!active) return;
+    onRoomsChange?.(rooms);
+    onFleetsChange?.(fleetsByRoom);
+  };
+
+  refreshAll();
+
+  const channel = supabase
+    .channel('teacher-all-rooms')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => {
+      refreshAll();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fleets' }, () => {
+      refreshAll();
+    })
+    .subscribe();
+
+  const pollId = setInterval(() => {
+    refreshAll();
+  }, 2500);
+
+  return () => {
+    active = false;
+    clearInterval(pollId);
+    supabase.removeChannel(channel);
+  };
 }
 
 export function subscribeToRoomAndFleetsSupabase(

@@ -62,12 +62,16 @@ import {
   deleteFleetKeepalive,
   deleteFleetSupabase,
   deleteLocalPlayerFromRoom,
+  deleteRoomInSupabase,
+  ensureRoomsBatchSupabase,
   fetchOrCreateRoomSupabase,
   fetchRoomFleetsFromSupabase,
   getDemoRivalFleets,
   getOrCreateClientId,
   isFleetOffline,
   isSupabaseConfigured,
+  loadAllLocalFleets,
+  loadAllLocalRoomsMeta,
   loadLocalGameState,
   loadLocalInteractions,
   loadLocalRoomMeta,
@@ -76,6 +80,7 @@ import {
   saveLocalInteractions,
   saveLocalRoomMeta,
   savePlayerToRoom,
+  subscribeToAllRoomsSupabase,
   subscribeToRoomAndFleetsSupabase,
   touchFleetHeartbeatSupabase,
   tryAdvanceRoomTurnSupabase,
@@ -153,6 +158,8 @@ export default function App() {
   const [localDemoInteraction, setLocalDemoInteraction] = useState(null);
   const [dismissedInteractionIds, setDismissedInteractionIds] = useState(() => new Set());
   const [isTeacherMode, setIsTeacherMode] = useState(false);
+  const [teacherAllRooms, setTeacherAllRooms] = useState([]);
+  const [teacherAllFleetsByRoom, setTeacherAllFleetsByRoom] = useState({});
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [turnTransition, setTurnTransition] = useState(null);
 
@@ -252,10 +259,34 @@ export default function App() {
 
   // Periodic tick to detect offline/departed fleets (> 25s without heartbeat)
   useEffect(() => {
-    if (!isOnlineSession) return;
+    if (!isOnlineSession && !isTeacherMode) return;
     const id = setInterval(() => setNowTick(Date.now()), 5000);
     return () => clearInterval(id);
-  }, [isOnlineSession]);
+  }, [isOnlineSession, isTeacherMode]);
+
+  // Multi-Room Teacher Dashboard subscription
+  useEffect(() => {
+    if (!isTeacherMode) return;
+
+    if (isSupabaseConfigured) {
+      return subscribeToAllRoomsSupabase({
+        onRoomsChange: (rooms) => setTeacherAllRooms(rooms),
+        onFleetsChange: (byRoom) => setTeacherAllFleetsByRoom(byRoom),
+      });
+    }
+
+    const syncLocalAll = () => {
+      setTeacherAllRooms(loadAllLocalRoomsMeta());
+      setTeacherAllFleetsByRoom(loadAllLocalFleets());
+    };
+    syncLocalAll();
+    const id = setInterval(syncLocalAll, 2000);
+    window.addEventListener('storage', syncLocalAll);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('storage', syncLocalAll);
+    };
+  }, [isTeacherMode]);
 
   // Presence heartbeat & automatic cleanup on tab close / pagehide
   useEffect(() => {
@@ -707,17 +738,147 @@ export default function App() {
     }
   };
 
-  const handleKickFleet = async (targetClientId) => {
+  const handleKickFleet = async (targetRoomCode, targetClientId) => {
+    const rc = targetRoomCode || cleanRoom;
     if (!targetClientId) return;
     if (isSupabaseConfigured) {
-      await deleteFleetSupabase(cleanRoom, targetClientId);
-      const freshMap = await fetchRoomFleetsFromSupabase(cleanRoom);
-      setRoomPeersMap(freshMap);
-      sendPingRef.current?.();
+      await deleteFleetSupabase(rc, targetClientId);
+      if (rc === cleanRoom) {
+        const freshMap = await fetchRoomFleetsFromSupabase(rc);
+        setRoomPeersMap(freshMap);
+        sendPingRef.current?.();
+      }
     } else {
-      const nextMap = deleteLocalPlayerFromRoom(cleanRoom, targetClientId);
-      setRoomPeersMap(nextMap);
-      channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+      const nextMap = deleteLocalPlayerFromRoom(rc, targetClientId);
+      if (rc === cleanRoom) {
+        setRoomPeersMap(nextMap);
+        channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+      }
+    }
+  };
+
+  // Multi-Room Teacher Handlers
+  const handleCreateBatchRooms = async (codes) => {
+    if (!codes?.length) return;
+    if (isSupabaseConfigured) {
+      const rooms = await ensureRoomsBatchSupabase(codes, clientId);
+      setTeacherAllRooms(rooms);
+    } else {
+      for (const rc of codes) {
+        const cur = loadLocalRoomMeta(rc, clientId);
+        saveLocalRoomMeta(rc, { ...cur, hostClientId: clientId });
+      }
+      setTeacherAllRooms(loadAllLocalRoomsMeta());
+    }
+  };
+
+  const handleStartRoomByCode = async (rc) => {
+    if (isSupabaseConfigured) {
+      const updated = await updateRoomInSupabase(rc, {
+        phase: 'playing',
+        currentTurn: 1,
+        turnPhase: 'sail_card',
+      });
+      if (rc === cleanRoom && updated) setRoomMeta(updated);
+    } else {
+      const cur = loadLocalRoomMeta(rc, clientId);
+      const next = saveLocalRoomMeta(rc, {
+        ...cur,
+        phase: 'playing',
+        currentTurn: 1,
+        turnPhase: 'sail_card',
+      });
+      if (rc === cleanRoom) setRoomMeta(next);
+    }
+  };
+
+  const handleBatchStartWaiting = async (waitingCodes) => {
+    await Promise.all((waitingCodes || []).map((rc) => handleStartRoomByCode(rc)));
+  };
+
+  const handleForceOpenActivityByCode = async (rc) => {
+    if (isSupabaseConfigured) {
+      const updated = await updateRoomInSupabase(rc, { turnPhase: 'activity' });
+      if (rc === cleanRoom && updated) setRoomMeta(updated);
+    } else {
+      const cur = loadLocalRoomMeta(rc, clientId);
+      const next = saveLocalRoomMeta(rc, { ...cur, turnPhase: 'activity' });
+      if (rc === cleanRoom) setRoomMeta(next);
+    }
+  };
+
+  const handleForceNextTurnByCode = async (rc, curTurn) => {
+    const isFinal = curTurn >= MAX_TURNS;
+    const nextTurn = isFinal ? MAX_TURNS : curTurn + 1;
+    const nextPhase = isFinal ? 'finished' : 'playing';
+    if (isSupabaseConfigured) {
+      const updated = await updateRoomInSupabase(rc, {
+        currentTurn: nextTurn,
+        turnPhase: 'sail_card',
+        phase: nextPhase,
+      });
+      if (rc === cleanRoom && updated) setRoomMeta(updated);
+    } else {
+      const cur = loadLocalRoomMeta(rc, clientId);
+      const next = saveLocalRoomMeta(rc, {
+        ...cur,
+        currentTurn: nextTurn,
+        turnPhase: 'sail_card',
+        phase: nextPhase,
+      });
+      if (rc === cleanRoom) setRoomMeta(next);
+    }
+  };
+
+  const handleResetRoomByCode = async (rc) => {
+    if (isSupabaseConfigured) {
+      await clearRoomInSupabase(rc);
+      const updated = await updateRoomInSupabase(rc, {
+        phase: 'waiting',
+        currentTurn: 1,
+        turnPhase: 'sail_card',
+      });
+      if (rc === cleanRoom && updated) {
+        setRoomMeta(updated);
+        setRoomPeersMap({});
+        setInteractions([]);
+      }
+    } else {
+      clearRoomSnapshot(rc);
+      saveLocalInteractions(rc, []);
+      const cur = loadLocalRoomMeta(rc, clientId);
+      const next = saveLocalRoomMeta(rc, {
+        ...cur,
+        phase: 'waiting',
+        currentTurn: 1,
+        turnPhase: 'sail_card',
+      });
+      if (rc === cleanRoom) {
+        setRoomPeersMap({});
+        setInteractions([]);
+        setRoomMeta(next);
+      }
+    }
+  };
+
+  const handleDeleteRoomByCode = async (rc) => {
+    if (isSupabaseConfigured) {
+      await deleteRoomInSupabase(rc);
+      setTeacherAllRooms((prev) => prev.filter((r) => r.roomCode !== rc));
+      setTeacherAllFleetsByRoom((prev) => {
+        const copy = { ...prev };
+        delete copy[rc];
+        return copy;
+      });
+    } else {
+      clearRoomSnapshot(rc);
+      try {
+        localStorage.removeItem(`age_of_sail_room_meta_v1_${rc}`);
+      } catch {
+        // Ignore
+      }
+      setTeacherAllRooms(loadAllLocalRoomsMeta());
+      setTeacherAllFleetsByRoom(loadAllLocalFleets());
     }
   };
 
@@ -1119,19 +1280,21 @@ export default function App() {
   if (isTeacherMode) {
     return (
       <TeacherModeView
-        roomCode={cleanRoom}
-        roomMeta={roomMeta}
-        fleets={allFleets}
+        activeRoomCode={cleanRoom}
+        allRooms={teacherAllRooms}
+        allFleetsByRoom={teacherAllFleetsByRoom}
         onBackToStudent={() => {
           setIsTeacherMode(false);
           if (isSpectatorHost) setPlayMode('lobby');
         }}
-        onStartVoyage={handleHostStartVoyage}
-        onForceOpenActivity={handleForceOpenActivity}
-        onForceNextTurn={handleForceNextTurn}
-        onResetToWaiting={handleResetToWaiting}
+        onCreateBatchRooms={handleCreateBatchRooms}
+        onBatchStartWaiting={handleBatchStartWaiting}
+        onStartRoom={handleStartRoomByCode}
+        onForceOpenActivityRoom={handleForceOpenActivityByCode}
+        onForceNextTurnRoom={handleForceNextTurnByCode}
+        onResetRoom={handleResetRoomByCode}
         onKickFleet={handleKickFleet}
-        onClearRoom={handleClearRoom}
+        onDeleteRoom={handleDeleteRoomByCode}
       />
     );
   }
@@ -1153,7 +1316,7 @@ export default function App() {
         onStartSoloPractice={handleStartSoloPractice}
         onLeaveRoom={handleLeaveToLobby}
         onHostStartVoyage={handleHostStartVoyage}
-        onKickFleet={handleKickFleet}
+        onKickFleet={(cid) => handleKickFleet(cleanRoom, cid)}
         onOpenTeacherMode={() => setIsTeacherMode(true)}
       />
     );
