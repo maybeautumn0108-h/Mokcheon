@@ -31,8 +31,13 @@ function buildTrailSegments(trail) {
   return segments;
 }
 
-export default function VoyageTrailMap({ state }) {
-  const [expanded, setExpanded] = useState(false);
+export default function VoyageTrailMap({
+  state,
+  title = '내 항해 경로 vs B4 항해도 비교',
+  coordLabel = '최종 위치',
+  defaultExpanded = false,
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   const trail = state?.trail || [];
   const segments = useMemo(() => buildTrailSegments(trail), [trail]);
@@ -52,7 +57,7 @@ export default function VoyageTrailMap({ state }) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 bg-slate-900/90">
         <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
           <Map className="w-3.5 h-3.5" />
-          내 항해 경로 vs B4 항해도 비교
+          {title}
         </span>
         <button
           type="button"
@@ -218,7 +223,7 @@ export default function VoyageTrailMap({ state }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1 text-sky-300 font-bold tabular-nums">
             <Compass className="w-3.5 h-3.5" />
-            최종 위치: {formatCoord(lastPoint.lat, lastPoint.lon)}
+            {coordLabel}: {formatCoord(lastPoint.lat, lastPoint.lon)}
           </span>
           <span className="text-slate-400">총 {Math.max(0, trail.length - 1)}회 이동 기록</span>
         </div>

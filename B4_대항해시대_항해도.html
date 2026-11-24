@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>대항해시대 B4 조별 항해도 (1cm = 10° 정방형 · 40턴 적위표)</title>
+  <style>
+    @page {
+      size: 364mm 257mm;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 364mm;
+      height: 257mm;
+      background: #ffffff;
+      color: #0f172a;
+      font-family: "Malgun Gothic", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .sheet {
+      width: 364mm;
+      height: 257mm;
+      padding: 6mm 0 5mm 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .header {
+      width: 340mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding-bottom: 2.2mm;
+      border-bottom: 0.5mm solid #0f172a;
+    }
+    .eyebrow {
+      font-size: 7.4pt;
+      font-weight: 800;
+      color: #9a3412;
+      margin-bottom: 0.7mm;
+    }
+    h1 {
+      font-size: 14.5pt;
+      font-weight: 900;
+      letter-spacing: -0.3pt;
+      color: #0f172a;
+    }
+    .meta-right {
+      text-align: right;
+      font-size: 7.6pt;
+      line-height: 1.45;
+      color: #1e293b;
+    }
+    .hemisphere-bar {
+      width: 340mm;
+      height: 5.5mm;
+      margin-top: 1.8mm;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 3mm;
+      font-size: 7.3pt;
+      font-weight: 700;
+    }
+    .hemisphere-center {
+      color: #fde68a;
+      font-weight: 800;
+    }
+    .map-row {
+      width: 364mm;
+      height: 140mm;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+    }
+    .lat-col {
+      position: relative;
+      width: 12mm;
+      height: 140mm;
+    }
+    .lat-tick {
+      position: absolute;
+      left: 0;
+      right: 0;
+      transform: translateY(-50%);
+      font-size: 6.4pt;
+      font-weight: 700;
+      color: #334155;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .lat-tick.eq {
+      color: #b91c1c;
+      font-size: 5.9pt;
+      font-weight: 900;
+    }
+    .map-frame {
+      width: 340mm;
+      height: 140mm;
+      border: 0.45mm solid #334155;
+      background: #fdfaf2;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .rules-strip {
+      width: 340mm;
+      margin-top: 2mm;
+      padding: 1.6mm 2.8mm;
+      border: 0.35mm solid #cbd5e1;
+      background: #f8fafc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.2pt;
+      color: #1e293b;
+    }
+    .rules-strip strong {
+      color: #0f172a;
+    }
+    .declination-wrap {
+      width: 340mm;
+      margin-top: 2.2mm;
+    }
+    .declination-title {
+      font-size: 7.5pt;
+      font-weight: 800;
+      color: #7c2d12;
+      margin-bottom: 1mm;
+      display: flex;
+      justify-content: space-between;
+    }
+    table.decl-table {
+      width: 340mm;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 6.7pt;
+      text-align: center;
+    }
+    table.decl-table th,
+    table.decl-table td {
+      border: 0.25mm solid #94a3b8;
+      padding: 1.25mm 0.25mm;
+      line-height: 1.2;
+    }
+    table.decl-table th {
+      background: #1e293b;
+      color: #f8fafc;
+      font-weight: 800;
+    }
+    table.decl-table th span {
+      font-weight: 600;
+      color: #fde68a;
+      font-size: 5.8pt;
+    }
+    table.decl-table th.row-head {
+      width: 14mm;
+      background: #334155;
+      color: #ffffff;
+      font-size: 6.4pt;
+    }
+    table.decl-table td {
+      background: #fffdf7;
+      font-weight: 700;
+      color: #0f172a;
+      font-variant-numeric: tabular-nums;
+    }
+    .footer {
+      width: 340mm;
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      font-size: 6.8pt;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="header">
+      <div>
+        <div class="eyebrow">B4 정방형 항해도 · 정밀 축척 10° = 1.000 cm (1턴 = 10일 · 초기 식량 140 · 8턴 부패 · 육지 접촉 시 피해 없이 정지)</div>
+        <h1>대항해시대 항해 시뮬레이션 : 전 세계 조별 항해도 및 40턴 태양 적위표</h1>
+      </div>
+      <div class="meta-right">
+        <div><strong>원정대:</strong> _________ 조 &nbsp;|&nbsp; <strong>역할:</strong> 선장 _______ · 항해사 _______ · 해도작성 _______ · 보급관 _______</div>
+        <div><strong>선택 미션:</strong> □ 미션1 (향료제도 · 30턴) &nbsp; □ 미션2 (아메리카 서쪽우회→중국 차 · 34턴) &nbsp; □ 미션3 (지구 일주 · 40턴)</div>
+      </div>
+    </header>
+
+    <div class="hemisphere-bar">
+      <span>◀ 서반구 (아메리카·태평양 방면 · 경도 숫자 비공개)</span>
+      <span class="hemisphere-center">출발: 리스본(38.7°N) → 1.항해 → 2.카드 → 3.주변활동(기항·교역·전투) → 리스본 귀항</span>
+      <span>동반구 (인도양·동남아·태평양 방면) ▶</span>
+    </div>
+
+    <div class="map-row">
+      <div class="lat-col"><div class="lat-tick " style="top: 5mm;">70°N</div><div class="lat-tick " style="top: 15mm;">60°N</div><div class="lat-tick " style="top: 25mm;">50°N</div><div class="lat-tick " style="top: 35mm;">40°N</div><div class="lat-tick " style="top: 45mm;">30°N</div><div class="lat-tick " style="top: 55mm;">20°N</div><div class="lat-tick " style="top: 65mm;">10°N</div><div class="lat-tick eq" style="top: 75mm;">0° 적도</div><div class="lat-tick " style="top: 85mm;">10°S</div><div class="lat-tick " style="top: 95mm;">20°S</div><div class="lat-tick " style="top: 105mm;">30°S</div><div class="lat-tick " style="top: 115mm;">40°S</div><div class="lat-tick " style="top: 125mm;">50°S</div><div class="lat-tick " style="top: 135mm;">60°S</div></div>
+      <div class="map-frame">
+        <svg viewBox="0 0 340 140" style="width: 340mm; height: 140mm; display: block;">
+          <defs>
+            <marker id="windArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="3.8" markerHeight="3.8" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#c2410c" />
+            </marker>
+          </defs>
+          <rect x="0" y="0" width="340" height="140" fill="#fdfaf2" />
+          <line x1="0" y1="5" x2="340" y2="5" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="15" x2="340" y2="15" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="25" x2="340" y2="25" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="35" x2="340" y2="35" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="45" x2="340" y2="45" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="55" x2="340" y2="55" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="65" x2="340" y2="65" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="75" x2="340" y2="75" stroke="#b91c1c" stroke-width="0.45"  />
+<line x1="0" y1="85" x2="340" y2="85" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="95" x2="340" y2="95" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="105" x2="340" y2="105" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="115" x2="340" y2="115" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="125" x2="340" y2="125" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="0" y1="135" x2="340" y2="135" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="10" y1="0" x2="10" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="20" y1="0" x2="20" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="30" y1="0" x2="30" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="40" y1="0" x2="40" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="50" y1="0" x2="50" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="60" y1="0" x2="60" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="70" y1="0" x2="70" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="80" y1="0" x2="80" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="90" y1="0" x2="90" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="100" y1="0" x2="100" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="110" y1="0" x2="110" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="120" y1="0" x2="120" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="130" y1="0" x2="130" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="140" y1="0" x2="140" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="150" y1="0" x2="150" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="160" y1="0" x2="160" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="170" y1="0" x2="170" y2="140" stroke="#a16207" stroke-width="0.35" opacity="0.85" />
+<line x1="180" y1="0" x2="180" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="190" y1="0" x2="190" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="200" y1="0" x2="200" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="210" y1="0" x2="210" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="220" y1="0" x2="220" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="230" y1="0" x2="230" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="240" y1="0" x2="240" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="250" y1="0" x2="250" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="260" y1="0" x2="260" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="270" y1="0" x2="270" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="280" y1="0" x2="280" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="290" y1="0" x2="290" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="300" y1="0" x2="300" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="310" y1="0" x2="310" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="320" y1="0" x2="320" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+<line x1="330" y1="0" x2="330" y2="140" stroke="#cbb896" stroke-width="0.2" opacity="0.85" />
+          <path d="M 161.00 36.30 L 160.60 35.50 L 161.00 33.50 L 160.80 32.00 L 162.50 31.30 L 168.00 31.60 L 168.50 29.50 L 165.50 26.60 L 168.00 25.50 L 171.50 24.00 L 174.50 22.50 L 178.50 21.00 L 178.20 18.00 L 180.50 17.30 L 182.00 19.00 L 180.50 16.00 L 175.50 16.00 L 175.00 13.00 L 180.00 10.00 L 185.00 6.00 L 195.00 4.00 L 202.00 5.00 L 212.00 7.50 L 230.00 6.00 L 230.00 23.00 L 218.00 30.00 L 209.00 28.00 L 206.50 30.00 L 203.50 30.50 L 200.50 28.80 L 198.00 33.80 L 196.00 34.50 L 193.80 37.00 L 192.50 38.40 L 190.50 36.00 L 189.50 34.00 L 184.00 29.50 L 182.50 31.00 L 186.00 34.00 L 188.40 35.00 L 186.00 37.00 L 182.50 33.50 L 180.00 31.00 L 177.50 31.20 L 173.20 32.50 L 170.00 36.20 L 168.00 38.20 L 164.60 38.90 L 162.50 38.00 L 161.10 38.00 L 161.00 36.30 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 164.50 24.90 L 165.50 23.70 L 165.00 23.00 L 166.80 21.70 L 165.00 20.00 L 163.80 18.20 L 165.00 16.40 L 167.00 16.40 L 168.20 17.50 L 167.50 19.00 L 169.00 20.50 L 171.70 22.40 L 171.30 23.80 L 168.50 24.30 L 164.50 24.90 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 159.80 23.40 L 160.00 21.00 L 162.50 19.70 L 164.50 20.50 L 163.80 22.80 L 161.50 23.50 L 159.80 23.40 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 146.00 9.50 L 152.00 8.80 L 156.50 10.00 L 155.00 11.20 L 147.50 11.20 L 146.00 9.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 164.20 39.30 L 168.00 39.80 L 173.00 38.20 L 180.00 37.80 L 181.50 41.50 L 190.00 44.00 L 202.30 43.80 L 204.50 47.00 L 208.00 54.00 L 213.30 62.40 L 221.30 63.10 L 219.00 70.00 L 210.60 76.50 L 209.90 78.30 L 209.60 79.50 L 210.50 85.50 L 205.00 92.80 L 204.60 95.00 L 205.50 99.00 L 202.80 101.00 L 198.00 108.00 L 190.00 109.80 L 188.30 109.20 L 187.80 107.00 L 184.50 98.00 L 182.00 91.00 L 183.00 84.00 L 181.80 80.00 L 179.30 74.00 L 179.50 71.00 L 175.00 70.70 L 171.00 69.00 L 168.70 69.80 L 162.50 70.50 L 156.70 66.50 L 153.50 62.50 L 152.50 60.30 L 154.00 54.00 L 156.80 47.50 L 160.50 43.50 L 164.20 39.30 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 219.30 87.00 L 220.40 90.50 L 217.50 100.00 L 214.00 100.20 L 213.30 96.00 L 214.50 91.50 L 218.00 88.50 L 219.30 87.00 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 196.50 35.00 L 205.50 38.50 L 205.00 43.50 L 204.80 45.50 L 209.00 53.50 L 213.40 62.30 L 222.00 59.50 L 229.80 52.50 L 226.00 49.30 L 220.00 45.50 L 221.50 44.80 L 227.20 48.40 L 236.50 50.00 L 238.50 52.00 L 242.60 54.50 L 243.50 59.50 L 245.20 62.50 L 247.50 66.90 L 249.80 64.50 L 252.00 58.50 L 258.50 53.00 L 262.00 54.00 L 264.30 59.00 L 267.50 59.00 L 268.50 65.00 L 270.30 69.50 L 272.00 72.50 L 273.80 73.70 L 274.30 72.50 L 272.50 69.00 L 270.50 61.50 L 275.00 66.40 L 279.20 62.00 L 278.00 54.00 L 284.20 52.70 L 290.50 49.00 L 291.80 44.00 L 290.00 40.00 L 292.50 37.60 L 288.50 36.00 L 294.00 35.00 L 296.50 40.00 L 299.00 39.90 L 299.50 36.50 L 305.00 31.50 L 311.00 23.00 L 310.00 19.00 L 325.00 15.00 L 327.00 24.00 L 333.00 19.00 L 348.00 9.00 L 340.00 5.00 L 300.00 3.00 L 270.00 0.00 L 240.00 2.00 L 230.00 6.00 L 225.00 23.00 L 215.00 33.00 L 206.00 33.00 L 196.50 35.00 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 250.00 65.30 L 251.80 67.20 L 250.60 69.00 L 249.70 67.50 L 250.00 65.30 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 300.50 43.70 L 300.00 41.50 L 305.50 40.50 L 309.80 39.50 L 311.50 34.50 L 315.50 31.50 L 311.50 29.70 L 309.50 34.00 L 306.50 38.00 L 302.00 40.50 L 300.50 43.70 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 290.80 49.80 L 291.90 50.50 L 290.80 53.00 L 290.10 51.50 L 290.80 49.80 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 290.20 56.50 L 292.40 57.50 L 292.50 61.00 L 294.00 62.00 L 290.00 60.50 L 290.20 56.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 293.50 65.20 L 296.40 66.00 L 295.50 69.40 L 292.00 68.20 L 293.50 65.20 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 265.30 69.50 L 268.50 71.40 L 270.30 73.50 L 273.50 75.50 L 275.80 80.80 L 274.20 80.70 L 270.50 76.50 L 267.50 73.50 L 265.30 69.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 275.40 81.10 L 284.40 82.80 L 284.20 83.70 L 276.00 82.20 L 275.40 81.10 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 279.00 73.50 L 285.00 69.80 L 287.50 68.10 L 288.80 70.50 L 287.50 78.50 L 280.20 78.20 L 279.00 73.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 289.50 73.80 L 295.00 73.40 L 293.00 76.00 L 292.80 79.50 L 290.50 80.50 L 289.00 78.50 L 289.50 73.80 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 301.00 76.20 L 306.00 77.00 L 311.00 77.60 L 318.00 83.00 L 320.50 85.50 L 313.00 84.00 L 308.00 83.20 L 302.50 79.00 L 301.00 76.20 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 283.50 97.00 L 292.00 92.00 L 300.50 87.00 L 306.80 87.30 L 306.50 90.50 L 310.80 92.50 L 312.50 85.80 L 315.50 90.00 L 323.50 101.00 L 320.00 112.50 L 314.50 113.50 L 308.50 110.50 L 305.50 109.80 L 299.00 106.80 L 285.10 109.30 L 285.50 106.50 L 283.50 97.00 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 314.80 115.80 L 318.30 116.00 L 317.20 118.50 L 315.20 117.50 L 314.80 115.80 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 342.50 109.50 L 348.50 112.70 L 345.50 116.50 L 342.50 113.00 L 342.50 109.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 342.00 116.00 L 344.00 117.00 L 338.50 121.60 L 336.50 120.50 L 342.00 116.00 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 2.00 9.50 L 8.00 4.00 L 35.00 5.00 L 70.00 2.00 L 90.00 3.00 L 106.00 13.00 L 114.40 23.00 L 117.00 28.00 L 110.00 29.00 L 103.00 30.00 L 100.00 33.20 L 94.50 39.50 L 89.80 49.50 L 87.50 47.00 L 81.00 46.00 L 72.80 49.00 L 74.00 55.80 L 79.50 53.80 L 83.00 53.60 L 81.80 59.00 L 86.50 60.00 L 87.00 65.00 L 92.00 66.20 L 90.50 66.50 L 84.50 64.50 L 77.80 60.50 L 64.50 54.50 L 60.00 52.00 L 55.50 43.50 L 52.90 42.50 L 47.50 37.20 L 45.50 27.00 L 35.00 18.00 L 20.00 15.00 L 8.00 20.00 L 4.00 15.00 L 2.00 9.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 115.00 0.00 L 150.00 0.00 L 148.00 5.00 L 126.50 15.20 L 117.00 9.00 L 102.00 0.00 L 115.00 0.00 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 85.10 53.10 L 91.00 52.00 L 95.90 54.80 L 92.50 55.20 L 85.10 53.10 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 95.60 56.50 L 100.00 55.20 L 101.70 56.50 L 98.50 57.40 L 95.60 56.50 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+<path d="M 92.00 66.20 L 94.50 64.20 L 98.50 62.80 L 108.00 64.50 L 120.00 73.50 L 134.80 80.50 L 135.20 83.00 L 131.50 88.00 L 129.00 97.00 L 121.50 103.00 L 116.50 109.00 L 112.00 113.50 L 105.00 118.00 L 102.50 125.00 L 103.00 130.00 L 98.50 129.50 L 95.00 122.00 L 96.50 115.00 L 98.50 108.00 L 99.50 93.50 L 92.50 87.00 L 88.70 79.80 L 90.50 73.00 L 92.00 66.20 Z" fill="#e6cfa4" stroke="#6f4c24" stroke-width="0.38" stroke-linejoin="round" />
+          <path d="M 157 40 L 153 50 L 149 57" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 138 54 L 122 60" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 116 31 L 136 27" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 144 90 L 137 99 L 148 107 L 166 111" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 188 117 L 215 117" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 255 117 L 285 117" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 55 117 L 85 117" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 226 72 L 240 63" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 254 66 L 266 61" fill="none" stroke="#c2410c" stroke-width="0.55" stroke-dasharray="1.4 1.0" marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 62 57 L 42 63" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 328 57 L 308 62" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 312 35 L 334 32" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 15 33 L 38 36" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+<path d="M 75 91 L 52 86" fill="none" stroke="#c2410c" stroke-width="0.55"  marker-end="url(#windArrow)" opacity="0.82" />
+          
+  <!-- Continent & Ocean Labels -->
+  <g fill="#78512a" font-size="3.6" font-weight="700" text-anchor="middle" opacity="0.72">
+    <text x="66" y="28">북아메리카</text>
+    <text x="110" y="89">남아메리카</text>
+    <text x="184" y="25">유럽</text>
+    <text x="190" y="61">아프리카</text>
+    <text x="258" y="30">아시아</text>
+    <text x="304" y="100">호주</text>
+  </g>
+  <g fill="#476c8a" font-size="3.4" font-weight="600" text-anchor="middle" letter-spacing="0.9" opacity="0.72">
+    <text x="30" y="49">북 태 평 양</text>
+    <text x="48" y="101">남 태 평 양</text>
+    <text x="128" y="47">북 대 서 양</text>
+    <text x="144" y="102">남 대 서 양</text>
+    <text x="246" y="93">인 도 양</text>
+    <text x="326" y="48">태 평 양</text>
+  </g>
+  <!-- Polar Warning Bands -->
+  <rect x="0" y="0" width="340" height="17" fill="#0ea5e9" opacity="0.09" />
+  <rect x="0" y="128" width="340" height="12" fill="#0ea5e9" opacity="0.11" />
+  <line x1="0" y1="17" x2="340" y2="17" stroke="#0284c7" stroke-width="0.3" stroke-dasharray="2 1.5" opacity="0.65" />
+  <line x1="0" y1="128" x2="340" y2="128" stroke="#0284c7" stroke-width="0.3" stroke-dasharray="2 1.5" opacity="0.65" />
+  <text x="12" y="11" font-size="2.6" font-weight="700" fill="#0369a1" opacity="0.9">❄ 북극권 (58°N↑ 눈·유빙 주의)</text>
+  <text x="288" y="9" font-size="2.6" font-weight="700" fill="#0369a1" opacity="0.9">❄ 북극권 (눈보라·혹한)</text>
+  <text x="188" y="134" font-size="2.7" font-weight="700" fill="#0369a1" opacity="0.9">❄ 남극권 (53°S↓ 눈·빙산 주의)</text>
+
+  <!-- Compass Rose in open South Atlantic -->
+  <g transform="translate(164, 95)">
+    <circle cx="0" cy="0" r="6.8" fill="#fcf7ea" fill-opacity="0.72" stroke="#78350f" stroke-width="0.3" />
+    <path d="M 0 -6.4 L 1.4 -1.4 L 6.4 0 L 1.4 1.4 L 0 6.4 L -1.4 1.4 L -6.4 0 L -1.4 -1.4 Z" fill="#1e293b" />
+    <text x="0" y="-7.6" text-anchor="middle" font-size="2.5" font-weight="800" fill="#0f172a">000° N</text>
+    <text x="8.2" y="0.9" text-anchor="start" font-size="2.3" font-weight="700" fill="#0f172a">090° E</text>
+    <text x="0" y="9.2" text-anchor="middle" font-size="2.3" font-weight="700" fill="#0f172a">180° S</text>
+    <text x="-8.2" y="0.9" text-anchor="end" font-size="2.3" font-weight="700" fill="#0f172a">270° W</text>
+  </g>
+
+  <!-- Exact Physical 1cm Scale Verification Bar (0..40 mm = 0..4 cm) -->
+  <g transform="translate(5, 134)">
+    <rect x="-1.5" y="-4.8" width="59" height="8.5" rx="1.2" fill="#fcf7ea" fill-opacity="0.92" stroke="#92400e" stroke-width="0.28" />
+    <line x1="0" y1="0" x2="40" y2="0" stroke="#0f172a" stroke-width="0.55" />
+    <line x1="0" y1="-1.5" x2="0" y2="1.2" stroke="#0f172a" stroke-width="0.45" /><line x1="10" y1="-1.5" x2="10" y2="1.2" stroke="#0f172a" stroke-width="0.45" /><line x1="20" y1="-1.5" x2="20" y2="1.2" stroke="#0f172a" stroke-width="0.45" /><line x1="30" y1="-1.5" x2="30" y2="1.2" stroke="#0f172a" stroke-width="0.45" /><line x1="40" y1="-1.5" x2="40" y2="1.2" stroke="#0f172a" stroke-width="0.45" />
+    <text x="0" y="-2.1" text-anchor="middle" font-size="2.1" font-weight="800" fill="#0f172a">0</text>
+    <text x="10" y="-2.1" text-anchor="middle" font-size="2.0" font-weight="700" fill="#b91c1c">1cm</text>
+    <text x="20" y="-2.1" text-anchor="middle" font-size="2.0" font-weight="700" fill="#b45309">2cm</text>
+    <text x="30" y="-2.1" text-anchor="middle" font-size="2.0" font-weight="700" fill="#0369a1">3cm</text>
+    <text x="40" y="-2.1" text-anchor="middle" font-size="2.0" font-weight="700" fill="#047857">4cm</text>
+    <text x="10" y="2.9" text-anchor="middle" font-size="1.65" font-weight="700" fill="#64748b">역풍</text>
+    <text x="20" y="2.9" text-anchor="middle" font-size="1.65" font-weight="700" fill="#64748b">무풍</text>
+    <text x="30" y="2.9" text-anchor="middle" font-size="1.65" font-weight="700" fill="#64748b">측풍</text>
+    <text x="40" y="2.9" text-anchor="middle" font-size="1.65" font-weight="700" fill="#64748b">순풍</text>
+    <text x="42.5" y="0.7" text-anchor="start" font-size="2.1" font-weight="800" fill="#0f172a">1cm = 10°</text>
+  </g>
+
+          
+    <g transform="translate(160.90, 36.30)">
+      <circle cx="0" cy="0" r="1.45" fill="#dc2626" stroke="#fff" stroke-width="0.35" />
+      <text
+        x="-2.4"
+        y="-2.8"
+        text-anchor="end"
+        font-size="2.85"
+        font-weight="800"
+        fill="#991b1b"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >★ 리스본(출발·38.7°N)</text>
+    </g>
+  
+
+    <g transform="translate(163.50, 38.80)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.4"
+        y="2.8"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 세비야</text>
+    </g>
+  
+
+    <g transform="translate(142.80, 36.40)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="0"
+        y="4.2"
+        text-anchor="middle"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 아조레스</text>
+    </g>
+  
+
+    <g transform="translate(154.60, 46.90)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="1.2"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 카나리아</text>
+    </g>
+  
+
+    <g transform="translate(117.80, 28.00)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="0.8"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 세인트존스</text>
+    </g>
+  
+
+    <g transform="translate(96.20, 38.20)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="0.8"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 제임스타운</text>
+    </g>
+  
+
+    <g transform="translate(87.60, 51.70)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="-1"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 아바나</text>
+    </g>
+  
+
+    <g transform="translate(132.00, 88.00)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="-1.2"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 바이아</text>
+    </g>
+  
+
+    <g transform="translate(116.20, 110.20)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="1"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 라플라타</text>
+    </g>
+  
+
+    <g transform="translate(103.00, 127.50)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="1.2"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 마젤란해협</text>
+    </g>
+  
+
+    <g transform="translate(97.60, 108.00)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="0.8"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 발파라이소</text>
+    </g>
+  
+
+    <g transform="translate(91.70, 87.20)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="0.8"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 카야오(리마)</text>
+    </g>
+  
+
+    <g transform="translate(69.80, 58.50)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="1.4"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 아카풀코</text>
+    </g>
+  
+
+    <g transform="translate(46.80, 37.40)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="1"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 몬터레이</text>
+    </g>
+  
+
+    <g transform="translate(146.40, 60.00)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="0.8"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 카보베르데</text>
+    </g>
+  
+
+    <g transform="translate(168.70, 70.00)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-1.8"
+        y="3.2"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 엘미나</text>
+    </g>
+  
+
+    <g transform="translate(182.60, 83.80)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="0.9"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 루안다</text>
+    </g>
+  
+
+    <g transform="translate(188.50, 109.50)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.4"
+        y="1.4"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 희망봉(34.5°S)</text>
+    </g>
+  
+
+    <g transform="translate(205.00, 95.20)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="1"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 소팔라</text>
+    </g>
+  
+
+    <g transform="translate(210.30, 78.20)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="0.8"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 말린디</text>
+    </g>
+  
+
+    <g transform="translate(215.20, 62.50)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2"
+        y="2.6"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 아덴</text>
+    </g>
+  
+
+    <g transform="translate(226.40, 48.90)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2"
+        y="-1.8"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 호르무즈</text>
+    </g>
+  
+
+    <g transform="translate(244.70, 62.00)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2"
+        y="-1.8"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 고아·캘리컷</text>
+    </g>
+  
+
+    <g transform="translate(249.50, 68.10)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2"
+        y="2.6"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 콜롬보</text>
+    </g>
+  
+
+    <g transform="translate(272.20, 72.80)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="-2.2"
+        y="2"
+        text-anchor="end"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 말라카</text>
+    </g>
+  
+
+    <g transform="translate(283.80, 53.20)">
+      <circle cx="0" cy="0" r="1.45" fill="#dc2626" stroke="#fff" stroke-width="0.35" />
+      <text
+        x="-2.4"
+        y="-1.6"
+        text-anchor="end"
+        font-size="2.85"
+        font-weight="800"
+        fill="#991b1b"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >★ 마카오·광저우(M2)</text>
+    </g>
+  
+
+    <g transform="translate(314.80, 61.50)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="0.9"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 괌</text>
+    </g>
+  
+
+    <g transform="translate(299.60, 42.40)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="0.6"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 나가사키</text>
+    </g>
+  
+
+    <g transform="translate(289.80, 60.50)">
+      <circle cx="0" cy="0" r="1.05" fill="#1d4ed8" stroke="#fff" stroke-width="0.3" />
+      <text
+        x="2.2"
+        y="0.5"
+        text-anchor="start"
+        font-size="2.45"
+        font-weight="700"
+        fill="#1e3a8a"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >⚓ 마닐라</text>
+    </g>
+  
+
+    <g transform="translate(297.50, 76.50)">
+      <circle cx="0" cy="0" r="1.45" fill="#dc2626" stroke="#fff" stroke-width="0.35" />
+      <text
+        x="2.2"
+        y="3"
+        text-anchor="start"
+        font-size="2.85"
+        font-weight="800"
+        fill="#991b1b"
+        paint-order="stroke"
+        stroke="#fcf7ea"
+        stroke-width="0.85"
+      >★ 향료제도(말루쿠·M1)</text>
+    </g>
+  
+        </svg>
+      </div>
+      <div class="lat-col"><div class="lat-tick " style="top: 5mm;">70°N</div><div class="lat-tick " style="top: 15mm;">60°N</div><div class="lat-tick " style="top: 25mm;">50°N</div><div class="lat-tick " style="top: 35mm;">40°N</div><div class="lat-tick " style="top: 45mm;">30°N</div><div class="lat-tick " style="top: 55mm;">20°N</div><div class="lat-tick " style="top: 65mm;">10°N</div><div class="lat-tick eq" style="top: 75mm;">0° 적도</div><div class="lat-tick " style="top: 85mm;">10°S</div><div class="lat-tick " style="top: 95mm;">20°S</div><div class="lat-tick " style="top: 105mm;">30°S</div><div class="lat-tick " style="top: 115mm;">40°S</div><div class="lat-tick " style="top: 125mm;">50°S</div><div class="lat-tick " style="top: 135mm;">60°S</div></div>
+    </div>
+
+    <div class="rules-strip">
+      <span><strong>B4 자 환산 (1cm = 10°):</strong> 역풍 1.0cm · 무풍/약풍 2.0cm · 측풍 3.0cm · 순풍 4.0cm (전속 항해 선택 시 +1.0cm)</span>
+      <span><strong>항해 규칙:</strong> 초기 식량 140 · 8턴 연속 미기항 시 부패(소모 1.5배) · 육지 접촉 시 피해 없이 정지(방향 전환 필요) · 극지(58°N↑/53°S↓) 눈·유빙</span>
+    </div>
+
+    <div class="declination-wrap">
+      <div class="declination-title">
+        <span>40턴 항해 일정 및 태양 적위(δ) 조견표 (미션1: 1~30턴 · 미션2: 1~34턴 · 미션3: 1~40턴)</span>
+        <span>※ 1cm = 10° 정방형 격자이므로 자로 잰 cm × 10 = 이동 각도(°)</span>
+      </div>
+      <table class="decl-table">
+        
+    <tr>
+      <th class="row-head">턴 (날짜)</th>
+      <th>1턴<br/><span>(5초)</span></th><th>2턴<br/><span>(5중)</span></th><th>3턴<br/><span>(5말)</span></th><th>4턴<br/><span>(6초)</span></th><th>5턴<br/><span>(6중)</span></th><th>6턴<br/><span>(6말)</span></th><th>7턴<br/><span>(7초)</span></th><th>8턴<br/><span>(7중)</span></th><th>9턴<br/><span>(7말)</span></th><th>10턴<br/><span>(8초)</span></th><th>11턴<br/><span>(8중)</span></th><th>12턴<br/><span>(8말)</span></th><th>13턴<br/><span>(9초)</span></th><th>14턴<br/><span>(9중)</span></th><th>15턴<br/><span>(9말)</span></th><th>16턴<br/><span>(10초)</span></th><th>17턴<br/><span>(10중)</span></th><th>18턴<br/><span>(10말)</span></th><th>19턴<br/><span>(11초)</span></th><th>20턴<br/><span>(11중)</span></th>
+    </tr>
+    <tr>
+      <th class="row-head">적위(δ)</th>
+      <td>+15.5°</td><td>+18.5°</td><td>+21.0°</td><td>+22.5°</td><td>+23.5°</td><td>+23.5°</td><td>+22.5°</td><td>+21.5°</td><td>+19.0°</td><td>+16.5°</td><td>+14.0°</td><td>+10.5°</td><td>+7.0°</td><td>+3.0°</td><td>-1.0°</td><td>-5.0°</td><td>-8.5°</td><td>-12.5°</td><td>-16.0°</td><td>-19.0°</td>
+    </tr>
+  
+        
+    <tr>
+      <th class="row-head">턴 (날짜)</th>
+      <th>21턴<br/><span>(11말)</span></th><th>22턴<br/><span>(12초)</span></th><th>23턴<br/><span>(12중)</span></th><th>24턴<br/><span>(12말)</span></th><th>25턴<br/><span>(1초)</span></th><th>26턴<br/><span>(1중)</span></th><th>27턴<br/><span>(1말)</span></th><th>28턴<br/><span>(2초)</span></th><th>29턴<br/><span>(2중)</span></th><th>30턴<br/><span>(2말)</span></th><th>31턴<br/><span>(3초)</span></th><th>32턴<br/><span>(3중)</span></th><th>33턴<br/><span>(3말)</span></th><th>34턴<br/><span>(4초)</span></th><th>35턴<br/><span>(4중)</span></th><th>36턴<br/><span>(4말)</span></th><th>37턴<br/><span>(5초)</span></th><th>38턴<br/><span>(5중)</span></th><th>39턴<br/><span>(5말)</span></th><th>40턴<br/><span>(6초)</span></th>
+    </tr>
+    <tr>
+      <th class="row-head">적위(δ)</th>
+      <td>-21.0°</td><td>-22.5°</td><td>-23.5°</td><td>-23.5°</td><td>-22.5°</td><td>-21.0°</td><td>-18.5°</td><td>-15.5°</td><td>-12.5°</td><td>-9.0°</td><td>-5.5°</td><td>-1.5°</td><td>+2.5°</td><td>+6.5°</td><td>+10.0°</td><td>+13.5°</td><td>+15.5°</td><td>+18.5°</td><td>+21.0°</td><td>+22.5°</td>
+    </tr>
+  
+      </table>
+    </div>
+
+    <footer class="footer">
+      <span>대항해시대 항해 시뮬레이션 (개정판 B4 항해도 · 북미/남미 신규 기항지 6곳 및 40턴 미션 반영)</span>
+      <span>인쇄 설정: 용지 크기 B4(JIS 364×257mm) · 배율 100%(실제 크기, 용지에 맞춤 해제) 필수</span>
+    </footer>
+  </div>
+</body>
+</html>

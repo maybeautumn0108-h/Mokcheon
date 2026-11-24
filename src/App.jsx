@@ -6,6 +6,7 @@ import {
   Clock,
   FastForward,
   Flag,
+  MapPin,
   Navigation,
   RotateCcw,
   Sparkles,
@@ -27,6 +28,7 @@ import ActivityStepPanel from './components/ActivityStepPanel.jsx';
 import InteractionModal from './components/InteractionModal.jsx';
 import TurnTransitionOverlay from './components/TurnTransitionOverlay.jsx';
 import MissionBriefingModal from './components/MissionBriefingModal.jsx';
+import VoyageTrailMap from './components/VoyageTrailMap.jsx';
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { getTurnInfo } from './data/calendar.js';
 import { getMissionById } from './data/missions.js';
@@ -178,6 +180,7 @@ export default function App() {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [turnTransition, setTurnTransition] = useState(null);
   const [showMissionBriefing, setShowMissionBriefing] = useState(false);
+  const [showPositionCheckMap, setShowPositionCheckMap] = useState(false);
 
   const sailTimerRef = useRef(null);
   const turnAnimTimerRef = useRef(null);
@@ -1565,6 +1568,27 @@ export default function App() {
 
           {activeTab === 'helm' && (
             <>
+              {gameState.status === 'active' &&
+                turnStep !== 'sail' &&
+                (gameState.activeTurn || 0) > 0 &&
+                (gameState.activeTurn || 0) % 3 === 0 && (
+                  <div className="rounded-xl border border-sky-400/50 bg-sky-950/50 px-3 py-2 text-xs text-sky-100 flex items-center justify-between gap-2 shadow">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-sky-400 shrink-0" />
+                      <span>
+                        <strong>제{gameState.activeTurn}턴 정기 위치 확인:</strong> 지도로 현재 위치를 파악하세요!
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPositionCheckMap(true)}
+                      className="shrink-0 rounded-lg bg-sky-500 hover:bg-sky-400 px-2.5 py-1 text-[11px] font-black text-slate-950 cursor-pointer"
+                    >
+                      위치 지도 보기
+                    </button>
+                  </div>
+                )}
+
               {(gameState.nextTurnBonusCm > 0 || gameState.nextTurnMaxCm !== null) && (
                 <div className="rounded-xl border border-amber-400/40 bg-amber-950/35 px-3 py-1.5 text-[11px] font-bold text-amber-200 text-center">
                   {gameState.nextTurnBonusCm > 0
@@ -1758,7 +1782,7 @@ export default function App() {
         <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />
       </div>
 
-      <TurnResultModal outcome={turnOutcome} onClose={handleCloseTurnModal} />
+      <TurnResultModal outcome={turnOutcome} state={gameState} onClose={handleCloseTurnModal} />
       {drawnCards && (
         <SituationCardModal
           key={`cards-turn-${gameState.turn}`}
@@ -1796,6 +1820,38 @@ export default function App() {
           missionId={gameState.missionId}
           onClose={() => setShowMissionBriefing(false)}
         />
+      )}
+      {showPositionCheckMap && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3">
+          <div className="w-full max-w-lg rounded-2xl border border-sky-500/40 bg-slate-900 p-4 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-black text-sky-300 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4" />
+                제{gameState.activeTurn || gameState.turn}턴 정기 위치 확인 (3턴 주기)
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPositionCheckMap(false)}
+                className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <VoyageTrailMap
+              state={gameState}
+              title={`제${gameState.activeTurn || gameState.turn}턴 현재 위치 및 항로`}
+              coordLabel="현재 위치"
+              defaultExpanded
+            />
+            <button
+              type="button"
+              onClick={() => setShowPositionCheckMap(false)}
+              className="w-full rounded-xl bg-sky-500 hover:bg-sky-400 py-2.5 text-sm font-black text-slate-950 cursor-pointer"
+            >
+              위치 확인 완료
+            </button>
+          </div>
+        </div>
       )}
       <TurnTransitionOverlay transition={turnTransition} />
     </div>

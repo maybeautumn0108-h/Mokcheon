@@ -24,6 +24,85 @@ export const FLEET_RADAR_RADIUS_DEG = 10.0; // 1.0 cm (1 grid square) on B4 map
 export const SPOILAGE_THRESHOLD_TURNS = 8;
 export const INITIAL_FOOD = 140;
 export const MAX_FOOD = 140;
+export const NORMAL_SAIL_FOOD_COST = 10;
+export const FULL_SAIL_FOOD_COST = 15;
+export const POSITION_CHECK_INTERVAL_TURNS = 3;
+
+const NATIVE_GOOD_EVENTS = [
+  {
+    title: '원주민의 우호적 환대',
+    detail: '해안 부족이 신선한 담수와 열대 과일을 나누어 주었습니다! (식량·식수 +20)',
+    foodDelta: 20,
+    goldDelta: 0,
+    hullDelta: 0,
+  },
+  {
+    title: '원주민과 뜻밖의 물물교환',
+    detail: '현지 주민과 물품을 나누며 귀한 사금과 식량을 얻었습니다! (금화 +80G, 식량·식수 +10)',
+    foodDelta: 10,
+    goldDelta: 80,
+    hullDelta: 0,
+  },
+  {
+    title: '원주민 장인의 선박 보수',
+    detail: '원주민들이 목재와 약초를 지원해 배를 손봐 주었습니다! (내구도 +15, 식량·식수 +10)',
+    foodDelta: 10,
+    goldDelta: 0,
+    hullDelta: 15,
+  },
+];
+
+const NATIVE_BAD_EVENTS = [
+  {
+    title: '원주민 부족의 경계·기습',
+    detail: '낯선 함대를 경계한 원주민들과 충돌하여 보급품과 금화를 잃었습니다. (식량·식수 -15, 금화 -50G)',
+    foodDelta: -15,
+    goldDelta: -50,
+    hullDelta: 0,
+  },
+  {
+    title: '해안 기습으로 인한 선박 손상',
+    detail: '상륙 지점에서 공격을 받아 선체가 파손되며 급히 후퇴했습니다. (내구도 -15, 식량·식수 -10)',
+    foodDelta: -10,
+    goldDelta: 0,
+    hullDelta: -15,
+  },
+  {
+    title: '협상 결렬 및 공물 손실',
+    detail: '거친 마찰 끝에 통행 대가로 금화와 식량을 내어주고 물러났습니다. (금화 -70G, 식량·식수 -10)',
+    foodDelta: -10,
+    goldDelta: -70,
+    hullDelta: 0,
+  },
+];
+
+/**
+ * Roll encounter when arriving at uncharted (non-port) land:
+ * 50% chance to meet natives -> among encounters, 30% good / 70% bad.
+ */
+export function rollNativeEncounter(rng = Math.random) {
+  if (rng() >= 0.5) {
+    return {
+      met: false,
+      isGood: null,
+      tone: 'neutral',
+      title: '조용한 무인 해안',
+      detail: '항구가 없는 빈 땅에 닿았으나 원주민과 마주치지 않았습니다.',
+      foodDelta: 0,
+      goldDelta: 0,
+      hullDelta: 0,
+    };
+  }
+  const isGood = rng() < 0.3;
+  const pool = isGood ? NATIVE_GOOD_EVENTS : NATIVE_BAD_EVENTS;
+  const picked = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+  return {
+    met: true,
+    isGood,
+    tone: isGood ? 'good' : 'bad',
+    ...picked,
+  };
+}
 
 export function createInitialGameState(missionId = 'mission_1') {
   const mission = getMissionById(missionId);
@@ -350,7 +429,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg) {
 /**
  * Execute one sailing turn.
  */
-export function executeSailTurn(state) {
+export function executeSailTurn(state, rng = Math.random) {
   if (state.status !== 'active') return { nextState: state, outcome: null };
 
   const planned = computePlannedMove(state);
@@ -364,16 +443,35 @@ export function executeSailTurn(state) {
   const nextTurnsWithoutPort = state.turnsWithoutPort + 1;
   const nextIsSpoiled = nextTurnsWithoutPort >= SPOILAGE_THRESHOLD_TURNS;
 
-  const baseFoodCost = state.isFullSail ? 18 : 13;
+  const baseFoodCost = state.isFullSail ? FULL_SAIL_FOOD_COST : NORMAL_SAIL_FOOD_COST;
   const foodCost = Math.round(baseFoodCost * (nextIsSpoiled ? 1.5 : 1.0));
-  const nextFood = Math.max(0, state.food - foodCost);
+  const afterSailFood = Math.max(0, state.food - foodCost);
 
   const hullDamage = 0;
-  const nextHull = Math.max(0, state.hull - hullDamage);
+  const afterSailHull = Math.max(0, state.hull - hullDamage);
 
   const nearbyPort = findNearbyPort(moveResult.endLat, moveResult.endLon);
   const hasDepartedLisbon =
     state.hasDepartedLisbon || nearbyPort?.id !== 'lisbon';
+
+  // Trigger native encounter only when arriving at uncharted non-port land (after moving > 0.05 cm)
+  const nativeEncounter =
+    moveResult.collided &&
+    !moveResult.hitBoundary &&
+    !nearbyPort &&
+    moveResult.actualCm > 0.05
+      ? rollNativeEncounter(rng)
+      : null;
+
+  const nextFood = Math.max(
+    0,
+    Math.min(MAX_FOOD, afterSailFood + (nativeEncounter?.foodDelta || 0)),
+  );
+  const nextHull = Math.max(
+    0,
+    Math.min(100, afterSailHull + (nativeEncounter?.hullDelta || 0)),
+  );
+  const nextGold = Math.max(0, state.gold + (nativeEncounter?.goldDelta || 0));
 
   let nextStatus = 'active';
   const nextTurn = state.turn + 1;
@@ -417,10 +515,22 @@ export function executeSailTurn(state) {
       : '';
   const polarZone = getPolarZone(moveResult.endLat);
   const polarText = polarZone ? ` · ${polarZone.shortLabel}` : '';
+  const isPositionCheckTurn = state.turn % POSITION_CHECK_INTERVAL_TURNS === 0;
 
   const logDetail = `방위 ${String(planned.headingDeg).padStart(3, '0')}° · ${planned.windClass.label}${
     state.isFullSail ? '(전속)' : ''
   } · 식량 -${foodCost}${blockedText}${polarText}`;
+
+  const extraLogs = [];
+  if (nativeEncounter?.met) {
+    extraLogs.push({
+      turn: state.turn,
+      dateLabel: turnInfo.label,
+      type: nativeEncounter.isGood ? 'card' : 'collision',
+      title: `미지의 해안 원주민 조우: ${nativeEncounter.title}`,
+      detail: nativeEncounter.detail,
+    });
+  }
 
   const nextState = {
     ...state,
@@ -434,6 +544,7 @@ export function executeSailTurn(state) {
     lon: moveResult.endLon,
     food: nextFood,
     hull: nextHull,
+    gold: nextGold,
     turnsWithoutPort: nextTurnsWithoutPort,
     isSpoiled: nextIsSpoiled,
     isDocked: false,
@@ -445,6 +556,7 @@ export function executeSailTurn(state) {
     status: nextStatus,
     trail: [...state.trail, { turn: state.turn, lat: moveResult.endLat, lon: moveResult.endLon }],
     logs: [
+      ...extraLogs,
       {
         turn: state.turn,
         dateLabel: turnInfo.label,
@@ -471,6 +583,8 @@ export function executeSailTurn(state) {
     newlySpoiled: !state.isSpoiled && nextIsSpoiled,
     nearbyPort: nearbyPort ? { id: nearbyPort.id, name: nearbyPort.name } : null,
     polarZone,
+    nativeEncounter,
+    isPositionCheckTurn,
     nextStatus,
   };
 
@@ -483,7 +597,7 @@ export function executeSailTurn(state) {
  */
 export function holdPositionTurn(state) {
   if (state.status !== 'active') return state;
-  const foodCost = Math.round(7 * (state.isSpoiled ? 1.5 : 1.0));
+  const foodCost = Math.round(5 * (state.isSpoiled ? 1.5 : 1.0));
   const nextFood = Math.max(0, state.food - foodCost);
   const missionMaxTurns = getMissionById(state.missionId).maxTurns;
   const nextStatus =

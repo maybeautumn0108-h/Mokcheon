@@ -51,6 +51,7 @@ import {
   isDirectionImmediatelyBlocked,
   repairHull,
   resolveMovement,
+  rollNativeEncounter,
   sellCargoItem,
 } from './navigation.js';
 
@@ -601,4 +602,49 @@ test('New Americas ports maintain healthy separation (>= 14°) and polar waters 
     headingDeg: 270,
   });
   assert.equal(arcticSail.outcome.polarZone?.id, 'arctic');
+});
+
+test('Food cost is 10/turn, position check opens every 3 turns, and non-port land rolls 50% native (30% good / 70% bad)', () => {
+  // Base food consumption is 10/turn
+  const t1 = executeSailTurn({ ...createInitialGameState(), turn: 1, headingDeg: 205 });
+  assert.equal(t1.outcome.foodCost, 10);
+  assert.equal(t1.nextState.food, 130);
+  assert.equal(t1.outcome.isPositionCheckTurn, false);
+
+  // Every 3 turns triggers position check flag
+  const t3 = executeSailTurn({ ...createInitialGameState(), turn: 3, headingDeg: 205 });
+  assert.equal(t3.outcome.isPositionCheckTurn, true);
+  const t6 = executeSailTurn({ ...createInitialGameState(), turn: 6, headingDeg: 205 });
+  assert.equal(t6.outcome.isPositionCheckTurn, true);
+
+  // Native encounter probabilities: 50% met, then 30% good / 70% bad
+  assert.equal(rollNativeEncounter(() => 0.5).met, false);
+  assert.equal(rollNativeEncounter(() => 0.49).met, true);
+
+  const seqGood = [0.1, 0.29, 0.0];
+  let idxG = 0;
+  const goodRes = rollNativeEncounter(() => seqGood[idxG++]);
+  assert.equal(goodRes.met, true);
+  assert.equal(goodRes.isGood, true);
+  assert.ok(goodRes.foodDelta > 0 || goodRes.goldDelta > 0 || goodRes.hullDelta > 0);
+
+  const seqBad = [0.1, 0.31, 0.0];
+  let idxB = 0;
+  const badRes = rollNativeEncounter(() => seqBad[idxB++]);
+  assert.equal(badRes.met, true);
+  assert.equal(badRes.isGood, false);
+  assert.ok(badRes.foodDelta < 0 || badRes.goldDelta < 0 || badRes.hullDelta < 0);
+
+  // Landing at an uncharted coast (non-port land) triggers native encounter via RNG
+  // Sail East at lat 10, lon -20 hits West Africa around lon -15.6 (no port nearby)
+  const seqCoastGood = [0.2, 0.1, 0.0];
+  let idxC = 0;
+  const coastLand = executeSailTurn(
+    { ...createInitialGameState(), lat: 10, lon: -20, headingDeg: 90 },
+    () => seqCoastGood[idxC++] ?? 0.5,
+  );
+  assert.equal(coastLand.outcome.collided, true);
+  assert.equal(coastLand.outcome.nearbyPort, null);
+  assert.equal(coastLand.outcome.nativeEncounter?.met, true);
+  assert.equal(coastLand.outcome.nativeEncounter?.isGood, true);
 });

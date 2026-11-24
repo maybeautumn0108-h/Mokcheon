@@ -1,12 +1,15 @@
 import React from 'react';
-import { AlertTriangle, Anchor, CheckCircle2, Compass, Ruler, Snowflake } from 'lucide-react';
+import { AlertTriangle, Anchor, CheckCircle2, Compass, MapPin, Ruler, Snowflake, Users } from 'lucide-react';
+import VoyageTrailMap from './VoyageTrailMap.jsx';
 
-export default function TurnResultModal({ outcome, onClose }) {
+export default function TurnResultModal({ outcome, state, onClose }) {
   if (!outcome) return null;
+
+  const nativeEv = outcome.nativeEncounter;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-sm p-3">
-      <div className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-slate-900 p-4 shadow-2xl">
+      <div className="w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-2xl border border-amber-500/40 bg-slate-900 p-4 shadow-2xl">
         <div className="flex items-start gap-3">
           {outcome.collided ? (
             <div className="rounded-xl bg-amber-500/20 border border-amber-400/40 p-2 text-amber-300 shrink-0">
@@ -75,6 +78,39 @@ export default function TurnResultModal({ outcome, onClose }) {
           </div>
         )}
 
+        {/* Uncharted Land Native Encounter Event */}
+        {nativeEv && (
+          <div
+            className={`mt-2.5 rounded-xl border p-3 text-xs space-y-1 ${
+              !nativeEv.met
+                ? 'border-slate-700 bg-slate-800/70 text-slate-300'
+                : nativeEv.isGood
+                  ? 'border-emerald-400/50 bg-emerald-950/45 text-emerald-100'
+                  : 'border-rose-400/50 bg-rose-950/45 text-rose-100'
+            }`}
+          >
+            <div className="font-black flex items-center gap-1.5">
+              <Users
+                className={`w-4 h-4 shrink-0 ${
+                  !nativeEv.met
+                    ? 'text-slate-400'
+                    : nativeEv.isGood
+                      ? 'text-emerald-300'
+                      : 'text-rose-300'
+                }`}
+              />
+              <span>
+                {!nativeEv.met
+                  ? `빈 땅 해안 상륙: ${nativeEv.title}`
+                  : nativeEv.isGood
+                    ? `원주민 조우 (우호)! ${nativeEv.title}`
+                    : `원주민 조우 (충돌)! ${nativeEv.title}`}
+              </span>
+            </div>
+            <p className="leading-relaxed opacity-95">{nativeEv.detail}</p>
+          </div>
+        )}
+
         {/* Polar Region Alert */}
         {outcome.polarZone && (
           <div className="mt-2.5 rounded-xl border border-cyan-400/50 bg-cyan-950/45 p-2.5 text-xs text-cyan-100 flex items-center gap-2">
@@ -92,6 +128,21 @@ export default function TurnResultModal({ outcome, onClose }) {
             <span>
               기항지 반경에 진입했습니다! 조타실 하단의 <strong>[기항지 정박]</strong>을 눌러 보급하세요.
             </span>
+          </div>
+        )}
+
+        {/* Every 3 Turns: Live World Map Position Check */}
+        {outcome.isPositionCheckTurn && state && (
+          <div className="mt-2.5 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-black text-sky-300">
+              <MapPin className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>제{outcome.completedTurn}턴 정기 위치 확인 (3턴마다 지도로 내 위치 파악)</span>
+            </div>
+            <VoyageTrailMap
+              state={state}
+              title={`제${outcome.completedTurn}턴 현재 위치 확인 지도`}
+              coordLabel="현재 위치"
+            />
           </div>
         )}
 
