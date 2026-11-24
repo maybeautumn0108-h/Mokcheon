@@ -609,6 +609,7 @@ export default function App() {
     () => realFleets.filter((f) => !isFleetOffline(f, nowTick)),
     [realFleets, nowTick],
   );
+  const isHost = roomMeta?.hostClientId === clientId;
 
   // Barrier 1: Auto-open Step 3 (activity phase) once ALL online fleets complete Step 1+2 (sail & card)
   useEffect(() => {
@@ -959,7 +960,6 @@ export default function App() {
     [gameState],
   );
 
-  const isHost = roomMeta?.hostClientId === clientId;
   const turnStep = gameState.turnStep || 'sail';
   const isWaitingForActivityOpen =
     playMode === 'online' &&
