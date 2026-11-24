@@ -109,19 +109,22 @@ test('Sailing East directly into West Africa stops right at coastline with zero 
   assert.equal(isDirectionImmediatelyBlocked(result.endLat, result.endLon, 90), true);
   assert.equal(isDirectionImmediatelyBlocked(result.endLat, result.endLon, 270), false);
 
-  // Full sail turn hitting land inflicts 0 hull damage
+  // Full sail turn hitting land inflicts 0 hull damage (pass rng >= 0.5 to isolate coastline hull behavior)
   const initial = { ...createInitialGameState(), lat: 10, lon: -20, headingDeg: 90, isFullSail: true };
-  const sailRes = executeSailTurn(initial);
+  const sailRes = executeSailTurn(initial, () => 0.9);
   assert.equal(sailRes.outcome.collided, true);
   assert.equal(sailRes.outcome.hullDamage, 0);
   assert.equal(sailRes.nextState.hull, 100);
 
   // Sailing again into land from coastline stops at 0 cm with 0 hull damage
-  const blockedRetry = executeSailTurn({
-    ...sailRes.nextState,
-    turnStep: 'sail',
-    headingDeg: 90,
-  });
+  const blockedRetry = executeSailTurn(
+    {
+      ...sailRes.nextState,
+      turnStep: 'sail',
+      headingDeg: 90,
+    },
+    () => 0.9,
+  );
   assert.equal(blockedRetry.outcome.collided, true);
   assert.equal(blockedRetry.outcome.actualCm, 0);
   assert.equal(blockedRetry.outcome.hullDamage, 0);
