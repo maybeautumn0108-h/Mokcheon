@@ -224,3 +224,100 @@ export function applyFleeBattleToState(state, peerName) {
     ],
   };
 }
+
+/**
+ * Filter active/displayable interaction for `clientId` strictly scoped to `currentTurn`.
+ * Never shows stale pending/active/completed interactions from earlier turns.
+ */
+export function selectActiveInteractionForPlayer(
+  interactions,
+  clientId,
+  currentTurn,
+  dismissedIds = new Set(),
+  nowMs = Date.now(),
+) {
+  if (!interactions?.length || !clientId) return null;
+
+  const candidates = interactions.filter((inter) => {
+    if (inter.initiatorId !== clientId && inter.targetId !== clientId) return false;
+    if (dismissedIds.has(inter.id)) return false;
+    // Drop anything from earlier turns immediately
+    if (currentTurn && inter.turn && inter.turn < currentTurn) return false;
+
+    const isOpen = inter.status === 'pending' || inter.status === 'active';
+    const isResolved =
+      inter.status === 'completed' ||
+      inter.status === 'declined' ||
+      inter.status === 'cancelled';
+
+    if (!isOpen && !isResolved) return false;
+    // Ignore stale resolved items (> 2 minutes old) on page reloads
+    if (isResolved && inter.updatedAt && nowMs - inter.updatedAt > 120000) return false;
+    return true;
+  });
+
+  if (candidates.length === 0) return null;
+  return (
+    candidates.find((i) => i.status === 'active') ||
+    candidates.find((i) => i.status === 'pending') ||
+    candidates[0]
+  );
+}
+
+/**
+ * Enforce 1 initiation per turn and block challenging busy or already-encountered peers.
+ */
+export function canInitiateInteractionWithPeer(
+  interactions,
+  myClientId,
+  peerClientId,
+  currentTurn,
+  interactedThisTurn = false,
+) {
+  if (interactedThisTurn) {
+    return { allowed: false, reason: '이번 턴 상호작용 이미 사용' };
+  }
+
+  const sameTurn = (interactions || []).filter(
+    (inter) => !currentTurn || !inter.turn || inter.turn === currentTurn,
+  );
+
+  const alreadyInitiated = sameTurn.some(
+    (inter) => inter.initiatorId === myClientId && inter.status !== 'cancelled',
+  );
+  if (alreadyInitiated) {
+    return { allowed: false, reason: '이번 턴에 이미 교류 요청함' };
+  }
+
+  const myOpen = sameTurn.some(
+    (inter) =>
+      (inter.initiatorId === myClientId || inter.targetId === myClientId) &&
+      (inter.status === 'pending' || inter.status === 'active'),
+  );
+  if (myOpen) {
+    return { allowed: false, reason: '진행 중인 교역·전투 완료 필요' };
+  }
+
+  if (peerClientId) {
+    const peerOpen = sameTurn.some(
+      (inter) =>
+        (inter.initiatorId === peerClientId || inter.targetId === peerClientId) &&
+        (inter.status === 'pending' || inter.status === 'active'),
+    );
+    if (peerOpen) {
+      return { allowed: false, reason: '상대 선단 교전·거래 중' };
+    }
+
+    const alreadyPaired = sameTurn.some(
+      (inter) =>
+        inter.status !== 'cancelled' &&
+        ((inter.initiatorId === myClientId && inter.targetId === peerClientId) ||
+          (inter.initiatorId === peerClientId && inter.targetId === myClientId)),
+    );
+    if (alreadyPaired) {
+      return { allowed: false, reason: '이번 턴 이미 조우한 선단' };
+    }
+  }
+
+  return { allowed: true, reason: null };
+}

@@ -138,11 +138,11 @@ export default function DeckView({
 
   const visibleLandmarks = useMemo(
     () =>
-      findVisiblePortLandmarks(lat, lon, headingDeg, 8.5)
+      findVisiblePortLandmarks(lat, lon, headingDeg, 10.0)
         .filter((lm) => Math.abs(lm.relBearing) <= FOV_HALF_DEG)
         .map((lm) => {
           const x = ((lm.relBearing + FOV_HALF_DEG) / (2 * FOV_HALF_DEG)) * 360;
-          const closeness = Math.max(0, 1 - lm.distDeg / 8.5);
+          const closeness = Math.max(0, 1 - lm.distDeg / 10.0);
           const scale = 0.52 + closeness * 0.65;
           return { ...lm, x, scale };
         }),

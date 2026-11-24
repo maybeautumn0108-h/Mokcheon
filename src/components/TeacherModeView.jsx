@@ -37,6 +37,7 @@ export default function TeacherModeView({
   onKickFleet,
   onDeleteRoom,
   onChangeRoomMission,
+  onClearInteractionsRoom,
 }) {
   const [hideMap, setHideMap] = useState(false);
   const [selectedRoomFilter, setSelectedRoomFilter] = useState('ALL');
@@ -392,6 +393,17 @@ export default function TeacherModeView({
                     >
                       <FastForward className="w-3 h-3" />
                       다음 턴
+                    </button>
+                  )}
+
+                  {phase === 'playing' && onClearInteractionsRoom && (
+                    <button
+                      type="button"
+                      onClick={() => onClearInteractionsRoom(room.roomCode)}
+                      title="진행 중이거나 멈춘 교전·거래 강제 종료"
+                      className="inline-flex items-center gap-1 rounded-lg border border-rose-400/40 bg-rose-500/15 hover:bg-rose-500/25 px-2 py-1.5 text-[11px] font-bold text-rose-200 cursor-pointer"
+                    >
+                      교전 해제
                     </button>
                   )}
 

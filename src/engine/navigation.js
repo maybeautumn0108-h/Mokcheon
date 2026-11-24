@@ -199,7 +199,7 @@ export function findNearbyPort(lat, lon) {
  * Find port landmarks visible on the horizon (within 8.5° = 0.85 cm)
  * returning only relative bearing, distance, and regional `archStyle` (NO port name leaked!).
  */
-export function findVisiblePortLandmarks(lat, lon, headingDeg, maxRadiusDeg = 8.5) {
+export function findVisiblePortLandmarks(lat, lon, headingDeg, maxRadiusDeg = 10.0) {
   const results = [];
   for (const port of PORTS) {
     const dLat = port.lat - lat;

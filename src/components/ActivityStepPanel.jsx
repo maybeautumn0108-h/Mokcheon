@@ -7,6 +7,7 @@ export default function ActivityStepPanel({
   isDocked,
   nearbyFleets,
   interactedThisTurn,
+  getPeerGuard,
   onEnterPort,
   onOpenTradeShop,
   onStartTrade,
@@ -86,41 +87,54 @@ export default function ActivityStepPanel({
           </div>
         ) : (
           <div className="space-y-2">
-            {nearbyFleets.map((peer) => (
-              <div
-                key={peer.clientId}
-                className="rounded-xl border border-sky-500/30 bg-sky-950/25 p-2.5 space-y-2"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-black text-sky-200">{peer.teamName}</span>
-                  <span className="text-[11px] text-sky-300 tabular-nums">
-                    {peer.sectorLabel} · {peer.distCm.toFixed(1)} cm
-                  </span>
-                </div>
+            {nearbyFleets.map((peer) => {
+              const guard = getPeerGuard
+                ? getPeerGuard(peer)
+                : { allowed: !interactedThisTurn, reason: null };
+              const disabled = interactedThisTurn || !guard.allowed;
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={interactedThisTurn}
-                    onClick={() => onStartTrade(peer)}
-                    className="flex items-center justify-center gap-1 rounded-lg border border-emerald-400/50 bg-emerald-500/20 hover:bg-emerald-500/30 disabled:opacity-40 py-2 text-xs font-black text-emerald-200 transition cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    <Handshake className="w-3.5 h-3.5" />
-                    물자 교환
-                  </button>
+              return (
+                <div
+                  key={peer.clientId}
+                  className="rounded-xl border border-sky-500/30 bg-sky-950/25 p-2.5 space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-black text-sky-200">{peer.teamName}</span>
+                    <span className="text-[11px] text-sky-300 tabular-nums">
+                      {peer.sectorLabel} · {peer.distCm.toFixed(1)} cm
+                    </span>
+                  </div>
 
-                  <button
-                    type="button"
-                    disabled={interactedThisTurn}
-                    onClick={() => onStartBattle(peer)}
-                    className="flex items-center justify-center gap-1 rounded-lg border border-rose-400/50 bg-rose-500/20 hover:bg-rose-500/30 disabled:opacity-40 py-2 text-xs font-black text-rose-200 transition cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    <Swords className="w-3.5 h-3.5" />
-                    전투하기
-                  </button>
+                  {!guard.allowed && guard.reason && !interactedThisTurn && (
+                    <div className="text-[10px] font-bold text-amber-300">
+                      ⏳ {guard.reason}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onStartTrade(peer)}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-emerald-400/50 bg-emerald-500/20 hover:bg-emerald-500/30 disabled:opacity-40 py-2 text-xs font-black text-emerald-200 transition cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <Handshake className="w-3.5 h-3.5" />
+                      물자 교환
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onStartBattle(peer)}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-rose-400/50 bg-rose-500/20 hover:bg-rose-500/30 disabled:opacity-40 py-2 text-xs font-black text-rose-200 transition cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <Swords className="w-3.5 h-3.5" />
+                      전투하기
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

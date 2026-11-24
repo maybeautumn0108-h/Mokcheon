@@ -359,6 +359,9 @@ export async function tryAdvanceRoomTurnSupabase(
     console.warn('[Supabase] advance turn error:', error.message);
     return false;
   }
+  if (data) {
+    await expireOpenInteractionsSupabase(roomCode, currentTurn);
+  }
   return Boolean(data);
 }
 
@@ -461,6 +464,38 @@ export async function fetchInteractionsSupabase(roomCode) {
   return (data || []).map(rowToInteraction);
 }
 
+export async function expireOpenInteractionsSupabase(roomCode, maxTurn = null) {
+  if (!supabase || !roomCode) return;
+  let query = supabase
+    .from('interactions')
+    .update({
+      status: 'cancelled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('room_code', roomCode)
+    .in('status', ['pending', 'active']);
+
+  if (typeof maxTurn === 'number') {
+    query = query.lte('turn', maxTurn);
+  }
+
+  const { error } = await query;
+  if (error) {
+    console.warn('[Supabase] expireOpenInteractions error:', error.message);
+  }
+}
+
+export function expireOpenLocalInteractions(roomCode, maxTurn = null) {
+  const list = loadLocalInteractions(roomCode);
+  const now = Date.now();
+  const next = list.map((item) => {
+    const isOpen = item.status === 'pending' || item.status === 'active';
+    const turnMatch = maxTurn === null || !item.turn || item.turn <= maxTurn;
+    return isOpen && turnMatch ? { ...item, status: 'cancelled', updatedAt: now } : item;
+  });
+  return saveLocalInteractions(roomCode, next);
+}
+
 export async function createInteractionSupabase({
   roomCode,
   turn,
@@ -472,6 +507,22 @@ export async function createInteractionSupabase({
   payload,
 }) {
   if (!supabase) return null;
+
+  // Server-side guard: prevent initiator from creating duplicate same-turn interactions
+  const { data: existing } = await supabase
+    .from('interactions')
+    .select('id, status')
+    .eq('room_code', roomCode)
+    .eq('turn', turn)
+    .eq('initiator_id', initiatorId)
+    .in('status', ['pending', 'active', 'completed', 'declined'])
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    console.warn('[Supabase] duplicate same-turn interaction blocked for', initiatorId);
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('interactions')
     .insert({

@@ -55,7 +55,9 @@ import {
   applyBattleToState,
   applyFleeBattleToState,
   applyTradeToState,
+  canInitiateInteractionWithPeer,
   createInitialBattlePayload,
+  selectActiveInteractionForPlayer,
 } from './engine/interactions.js';
 import {
   HEARTBEAT_INTERVAL_MS,
@@ -70,6 +72,8 @@ import {
   deleteLocalPlayerFromRoom,
   deleteRoomInSupabase,
   ensureRoomsBatchSupabase,
+  expireOpenInteractionsSupabase,
+  expireOpenLocalInteractions,
   fetchOrCreateRoomSupabase,
   fetchRoomFleetsFromSupabase,
   getDemoRivalFleets,
@@ -95,6 +99,23 @@ import {
   updateRoomInSupabase,
   upsertPlayerToSupabase,
 } from './engine/fleetSync.js';
+
+function loadIdSet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveIdSet(key, setObj) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(setObj).slice(-100)));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 function getEndMeta(status, missionId) {
   const mission = getMissionById(missionId);
@@ -173,7 +194,9 @@ export default function App() {
   const [interactions, setInteractions] = useState([]);
   const [draftTradePeer, setDraftTradePeer] = useState(null);
   const [localDemoInteraction, setLocalDemoInteraction] = useState(null);
-  const [dismissedInteractionIds, setDismissedInteractionIds] = useState(() => new Set());
+  const [dismissedInteractionIds, setDismissedInteractionIds] = useState(() =>
+    loadIdSet(`age_of_sail_dismissed_${clientId}`),
+  );
   const [isTeacherMode, setIsTeacherMode] = useState(false);
   const [teacherAllRooms, setTeacherAllRooms] = useState([]);
   const [teacherAllFleetsByRoom, setTeacherAllFleetsByRoom] = useState({});
@@ -189,7 +212,11 @@ export default function App() {
   const prevRoomTurnRef = useRef(1);
   const prevRoomTurnPhaseRef = useRef('sail_card');
   const prevCriticalSigRef = useRef('');
-  const appliedInteractionIdsRef = useRef(new Set());
+  const appliedInteractionIdsRef = useRef(loadIdSet(`age_of_sail_applied_${clientId}`));
+
+  useEffect(() => {
+    saveIdSet(`age_of_sail_dismissed_${clientId}`, dismissedInteractionIds);
+  }, [dismissedInteractionIds, clientId]);
 
   const cleanRoom = roomCode.trim() || 'HIST-101';
   const isOnlineSession = playMode === 'online' || (playMode === 'lobby' && joinedLobbyRoom);
@@ -502,6 +529,16 @@ export default function App() {
       setTurnOutcome(null);
       setDrawnCards(null);
       setDraftTradePeer(null);
+      setLocalDemoInteraction(null);
+      setDismissedInteractionIds((prev) => {
+        const next = new Set(prev);
+        for (const inter of interactions) {
+          if (!inter.turn || inter.turn < roomMeta.currentTurn) {
+            next.add(inter.id);
+          }
+        }
+        return next;
+      });
       setGameState((prev) => {
         if (prev.status !== 'active') return prev;
         const alreadyOnNewTurn =
@@ -612,14 +649,22 @@ export default function App() {
     return localDemoInteraction ? [localDemoInteraction, ...interactions] : interactions;
   }, [localDemoInteraction, interactions]);
 
+  const effectiveInteractionTurn =
+    playMode === 'online'
+      ? roomMeta.currentTurn
+      : gameState.activeTurn || gameState.turn;
+
   useEffect(() => {
     if (isSpectatorHost) return;
+    let changed = false;
     for (const inter of allWatchedInteractions) {
       if (inter.status !== 'completed') continue;
+      if (effectiveInteractionTurn && inter.turn && inter.turn < effectiveInteractionTurn) continue;
       if (appliedInteractionIdsRef.current.has(inter.id)) continue;
       if (inter.initiatorId !== clientId && inter.targetId !== clientId) continue;
 
       appliedInteractionIdsRef.current.add(inter.id);
+      changed = true;
       const isInit = inter.initiatorId === clientId;
       const peerName = isInit ? inter.targetName : inter.initiatorName;
 
@@ -637,27 +682,34 @@ export default function App() {
         }));
       }
     }
-  }, [allWatchedInteractions, clientId, isSpectatorHost]);
+    if (changed) {
+      saveIdSet(`age_of_sail_applied_${clientId}`, appliedInteractionIdsRef.current);
+    }
+  }, [allWatchedInteractions, clientId, isSpectatorHost, effectiveInteractionTurn]);
 
-  // Find active interaction modal candidate for this player
+  // Find active interaction modal candidate for this player (scoped strictly to current turn)
+
   const activeInteraction = useMemo(() => {
     if (isSpectatorHost) return null;
     if (localDemoInteraction && !dismissedInteractionIds.has(localDemoInteraction.id)) {
       return localDemoInteraction;
     }
-    return (
-      interactions.find(
-        (inter) =>
-          (inter.initiatorId === clientId || inter.targetId === clientId) &&
-          !dismissedInteractionIds.has(inter.id) &&
-          (inter.status === 'pending' ||
-            inter.status === 'active' ||
-            inter.status === 'completed' ||
-            inter.status === 'declined' ||
-            inter.status === 'cancelled'),
-      ) || null
+    return selectActiveInteractionForPlayer(
+      interactions,
+      clientId,
+      effectiveInteractionTurn,
+      dismissedInteractionIds,
+      nowTick,
     );
-  }, [interactions, localDemoInteraction, clientId, dismissedInteractionIds, isSpectatorHost]);
+  }, [
+    interactions,
+    localDemoInteraction,
+    clientId,
+    effectiveInteractionTurn,
+    dismissedInteractionIds,
+    isSpectatorHost,
+    nowTick,
+  ]);
 
   const allFleets = useMemo(() => {
     const demos = showDemoRivals ? getDemoRivalFleets(gameState.turn) : [];
@@ -882,6 +934,19 @@ export default function App() {
     }
   };
 
+  const handleClearInteractionsByCode = async (rc) => {
+    if (isSupabaseConfigured) {
+      await expireOpenInteractionsSupabase(rc);
+      if (rc === cleanRoom) sendPingRef.current?.();
+    } else {
+      const next = expireOpenLocalInteractions(rc);
+      if (rc === cleanRoom) {
+        setInteractions(next);
+        channelRef.current?.postMessage({ type: 'SYNC_INTERACTIONS' });
+      }
+    }
+  };
+
   const handleForceNextTurnByCode = async (rc, curTurn) => {
     const roomObj =
       teacherAllRooms.find((r) => r.roomCode === rc) || (rc === cleanRoom ? roomMeta : null);
@@ -890,13 +955,18 @@ export default function App() {
     const nextTurn = isFinal ? maxTurns : curTurn + 1;
     const nextPhase = isFinal ? 'finished' : 'playing';
     if (isSupabaseConfigured) {
+      await expireOpenInteractionsSupabase(rc, curTurn);
       const updated = await updateRoomInSupabase(rc, {
         currentTurn: nextTurn,
         turnPhase: 'sail_card',
         phase: nextPhase,
       });
-      if (rc === cleanRoom && updated) setRoomMeta(updated);
+      if (rc === cleanRoom && updated) {
+        setRoomMeta(updated);
+        sendPingRef.current?.();
+      }
     } else {
+      const nextList = expireOpenLocalInteractions(rc, curTurn);
       const cur = loadLocalRoomMeta(rc, clientId);
       const next = saveLocalRoomMeta(rc, {
         ...cur,
@@ -904,7 +974,12 @@ export default function App() {
         turnPhase: 'sail_card',
         phase: nextPhase,
       });
-      if (rc === cleanRoom) setRoomMeta(next);
+      if (rc === cleanRoom) {
+        setInteractions(nextList);
+        setRoomMeta(next);
+        channelRef.current?.postMessage({ type: 'SYNC_INTERACTIONS' });
+        channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
+      }
     }
   };
 
@@ -1008,13 +1083,19 @@ export default function App() {
     const nextTurn = isFinal ? maxTurns : roomMeta.currentTurn + 1;
     const nextPhase = isFinal ? 'finished' : 'playing';
     if (isSupabaseConfigured) {
+      await expireOpenInteractionsSupabase(cleanRoom, roomMeta.currentTurn);
       const updated = await updateRoomInSupabase(cleanRoom, {
         currentTurn: nextTurn,
         turnPhase: 'sail_card',
         phase: nextPhase,
       });
-      if (updated) setRoomMeta(updated);
+      if (updated) {
+        setRoomMeta(updated);
+        sendPingRef.current?.();
+      }
     } else {
+      const nextList = expireOpenLocalInteractions(cleanRoom, roomMeta.currentTurn);
+      setInteractions(nextList);
       const nextMeta = saveLocalRoomMeta(cleanRoom, {
         ...roomMeta,
         currentTurn: nextTurn,
@@ -1022,6 +1103,7 @@ export default function App() {
         phase: nextPhase,
       });
       setRoomMeta(nextMeta);
+      channelRef.current?.postMessage({ type: 'SYNC_INTERACTIONS' });
       channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
     }
   };
@@ -1174,12 +1256,27 @@ export default function App() {
 
   const handleSendTradeOffer = async (peer, offer) => {
     setDraftTradePeer(null);
+    const guard = canInitiateInteractionWithPeer(
+      allWatchedInteractions,
+      clientId,
+      peer.clientId,
+      effectiveInteractionTurn,
+      Boolean(gameState.interactedThisTurn),
+    );
+    if (!guard.allowed) {
+      setTurnToast(guard.reason);
+      return;
+    }
+
+    // Lock initiation immediately so double-clicks or declined offers cannot spam in the same turn
+    setGameState((prev) => ({ ...prev, interactedThisTurn: true }));
+
     if (peer.isDemo) {
       const demoId = `demo-trade-${Date.now()}`;
       setLocalDemoInteraction({
         id: demoId,
         roomCode: cleanRoom,
-        turn: gameState.activeTurn || gameState.turn,
+        turn: effectiveInteractionTurn,
         type: 'trade',
         initiatorId: clientId,
         initiatorName: teamName,
@@ -1199,7 +1296,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       await createInteractionSupabase({
         roomCode: cleanRoom,
-        turn: gameState.activeTurn || gameState.turn,
+        turn: effectiveInteractionTurn,
         type: 'trade',
         initiatorId: clientId,
         initiatorName: teamName.trim() || '탐험 선단',
@@ -1211,7 +1308,7 @@ export default function App() {
       const item = {
         id: `local-${Date.now()}`,
         roomCode: cleanRoom,
-        turn: gameState.activeTurn || gameState.turn,
+        turn: effectiveInteractionTurn,
         type: 'trade',
         initiatorId: clientId,
         initiatorName: teamName.trim() || '탐험 선단',
@@ -1225,13 +1322,28 @@ export default function App() {
   };
 
   const handleStartBattle = async (peer) => {
+    const guard = canInitiateInteractionWithPeer(
+      allWatchedInteractions,
+      clientId,
+      peer.clientId,
+      effectiveInteractionTurn,
+      Boolean(gameState.interactedThisTurn),
+    );
+    if (!guard.allowed) {
+      setTurnToast(guard.reason);
+      return;
+    }
+
+    // Lock initiation immediately so rapid clicks or declines/flees cannot loop endlessly
+    setGameState((prev) => ({ ...prev, interactedThisTurn: true }));
+
     const initPayload = createInitialBattlePayload();
     if (peer.isDemo) {
       const demoId = `demo-battle-${Date.now()}`;
       setLocalDemoInteraction({
         id: demoId,
         roomCode: cleanRoom,
-        turn: gameState.activeTurn || gameState.turn,
+        turn: effectiveInteractionTurn,
         type: 'battle',
         initiatorId: clientId,
         initiatorName: teamName,
@@ -1251,7 +1363,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       await createInteractionSupabase({
         roomCode: cleanRoom,
-        turn: gameState.activeTurn || gameState.turn,
+        turn: effectiveInteractionTurn,
         type: 'battle',
         initiatorId: clientId,
         initiatorName: teamName.trim() || '탐험 선단',
@@ -1263,7 +1375,7 @@ export default function App() {
       const item = {
         id: `local-${Date.now()}`,
         roomCode: cleanRoom,
-        turn: gameState.activeTurn || gameState.turn,
+        turn: effectiveInteractionTurn,
         type: 'battle',
         initiatorId: clientId,
         initiatorName: teamName.trim() || '탐험 선단',
@@ -1376,6 +1488,7 @@ export default function App() {
         onKickFleet={handleKickFleet}
         onDeleteRoom={handleDeleteRoomByCode}
         onChangeRoomMission={handleChangeRoomMission}
+        onClearInteractionsRoom={handleClearInteractionsByCode}
       />
     );
   }
@@ -1670,6 +1783,15 @@ export default function App() {
                     isDocked={gameState.isDocked}
                     nearbyFleets={nearbyFleets}
                     interactedThisTurn={Boolean(gameState.interactedThisTurn)}
+                    getPeerGuard={(peer) =>
+                      canInitiateInteractionWithPeer(
+                        allWatchedInteractions,
+                        clientId,
+                        peer.clientId,
+                        effectiveInteractionTurn,
+                        Boolean(gameState.interactedThisTurn),
+                      )
+                    }
                     onEnterPort={handleEnterPort}
                     onOpenTradeShop={() => setActiveTab('log')}
                     onStartTrade={(peer) => setDraftTradePeer(peer)}

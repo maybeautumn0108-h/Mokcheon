@@ -28,8 +28,10 @@ import {
   applyBattleToState,
   applyTradeToState,
   canAcceptTradeOffer,
+  canInitiateInteractionWithPeer,
   createInitialBattlePayload,
   resolveRpsRound,
+  selectActiveInteractionForPlayer,
   validateTradeOffer,
 } from './interactions.js';
 import {
@@ -647,4 +649,61 @@ test('Food cost is 10/turn, position check opens every 3 turns, and non-port lan
   assert.equal(coastLand.outcome.nearbyPort, null);
   assert.equal(coastLand.outcome.nativeEncounter?.met, true);
   assert.equal(coastLand.outcome.nativeEncounter?.isGood, true);
+});
+
+test('Ports have wider docking radius (>= 5.0°) and interaction guards prevent infinite battles or stale turn popups', () => {
+  for (const port of PORTS) {
+    assert.ok(port.dockRadiusDeg >= 5.0, `Port ${port.id} dockRadiusDeg should be >= 5.0`);
+  }
+  // Caboverde at (15.0, -23.6) should now be dockable from 5.5° west (-29.1)
+  assert.equal(findNearbyPort(15.0, -29.1)?.id, 'caboverde');
+
+  // Guard blocks duplicate initiation after already initiating or after a declined challenge in the same turn
+  const turn3Interactions = [
+    {
+      id: 'i1',
+      turn: 3,
+      initiatorId: 'team-a',
+      targetId: 'team-b',
+      status: 'declined',
+      updatedAt: Date.now(),
+    },
+    {
+      id: 'i2',
+      turn: 3,
+      initiatorId: 'team-c',
+      targetId: 'team-d',
+      status: 'active',
+      updatedAt: Date.now(),
+    },
+  ];
+  // Team A cannot re-challenge Team B (or anyone) in Turn 3 even after Team B declined
+  assert.equal(
+    canInitiateInteractionWithPeer(turn3Interactions, 'team-a', 'team-b', 3, false).allowed,
+    false,
+  );
+  // Team B cannot challenge Team C while Team C is in an active battle with Team D
+  assert.equal(
+    canInitiateInteractionWithPeer(turn3Interactions, 'team-b', 'team-c', 3, false).allowed,
+    false,
+  );
+  // Once room advances to Turn 4, old Turn 3 declined/pending/active interactions are ignored
+  assert.equal(
+    canInitiateInteractionWithPeer(turn3Interactions, 'team-a', 'team-b', 4, false).allowed,
+    true,
+  );
+
+  // Stale Turn 2 pending battle must NOT surface on Turn 3
+  const staleList = [
+    {
+      id: 'old-battle',
+      turn: 2,
+      initiatorId: 'team-a',
+      targetId: 'team-b',
+      status: 'pending',
+      updatedAt: Date.now(),
+    },
+  ];
+  assert.equal(selectActiveInteractionForPlayer(staleList, 'team-b', 3, new Set()), null);
+  assert.equal(selectActiveInteractionForPlayer(staleList, 'team-b', 2, new Set())?.id, 'old-battle');
 });
