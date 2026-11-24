@@ -806,3 +806,74 @@ test('AI players cap at 3/room, stay online, battle/trade proactively, and Lv.4 
     true,
   );
 });
+
+test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-way Good Hope victory & settlement', () => {
+  const mission = getMissionById('mission_event_cape');
+  assert.equal(mission.id, 'mission_event_cape');
+  assert.equal(mission.maxTurns, 10);
+  assert.equal(mission.positionCheckInterval, 2);
+  assert.equal(mission.isOneWayGoal, true);
+  assert.equal(mission.goalPortId, 'goodhope');
+
+  // Turn 1: not a position check turn; Turn 2: position check turn (every 2 turns)
+  let state = createInitialGameState('mission_event_cape');
+  const t1 = executeSailTurn({ ...state, turnStep: 'sail', headingDeg: 205 }, () => 0.9);
+  assert.equal(t1.outcome.isPositionCheckTurn, false);
+  assert.equal(t1.outcome.positionCheckInterval, 2);
+
+  const t2 = executeSailTurn(
+    { ...t1.nextState, turnStep: 'sail', headingDeg: 205 },
+    () => 0.9,
+  );
+  assert.equal(t2.outcome.completedTurn, 2);
+  assert.equal(t2.outcome.isPositionCheckTurn, true);
+  assert.equal(t2.outcome.positionCheckInterval, 2);
+
+  // One-way goal arrival near Cape of Good Hope immediately triggers mission victory without returning to Lisbon
+  const approachCape = {
+    ...createInitialGameState('mission_event_cape'),
+    turn: 5,
+    lat: -34.5,
+    lon: 17.5,
+    headingDeg: 90,
+    plannedCm: 3,
+    turnStep: 'sail',
+  };
+  const winRes = executeSailTurn(approachCape, () => 0.9);
+  assert.equal(winRes.nextState.status, 'returned');
+  assert.equal(winRes.outcome.nextStatus, 'returned');
+  assert.equal(winRes.nextState.visitedPorts.includes('goodhope'), true);
+  assert.equal(
+    evaluateMissionProgress(winRes.nextState, 'mission_event_cape').goalAchieved,
+    true,
+  );
+  const settlement = calculateFinalSettlement(winRes.nextState);
+  assert.equal(settlement.missionBonus, 300);
+
+  // Lv.4 Master AI completes mission_event_cape within 10 turns
+  const makeRng = (seed = 19) => {
+    let s = seed;
+    return () => {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+  };
+  let aiCape = createAiFleetPayload({
+    personality: 'explorer',
+    level: 4,
+    missionId: 'mission_event_cape',
+  });
+  const rngCape = makeRng(19);
+  for (let t = 1; t <= 10; t++) {
+    if (aiCape.status === 'active') {
+      aiCape = runAiSailAndCardStep(aiCape, t, 'mission_event_cape', rngCape);
+      aiCape = runAiActivityStep(aiCape, t, 'mission_event_cape', [aiCape], [], rngCape).updatedFleet;
+    }
+  }
+  assert.equal(aiCape.status, 'returned');
+  assert.ok(aiCape.aiConfig.state.turn <= 10);
+  assert.equal(
+    evaluateMissionProgress(aiCape.aiConfig.state, 'mission_event_cape').goalAchieved,
+    true,
+  );
+});

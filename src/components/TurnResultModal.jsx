@@ -131,12 +131,14 @@ export default function TurnResultModal({ outcome, state, onClose }) {
           </div>
         )}
 
-        {/* Every 3 Turns: Live World Map Position Check */}
+        {/* Periodic Live World Map Position Check */}
         {outcome.isPositionCheckTurn && state && (
           <div className="mt-2.5 space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-black text-sky-300">
               <MapPin className="w-4 h-4 text-sky-400 shrink-0" />
-              <span>제{outcome.completedTurn}턴 정기 위치 확인 (3턴마다 지도로 내 위치 파악)</span>
+              <span>
+                제{outcome.completedTurn}턴 정기 위치 확인 ({outcome.positionCheckInterval || 3}턴마다 지도로 내 위치 파악)
+              </span>
             </div>
             <VoyageTrailMap
               state={state}
@@ -151,7 +153,11 @@ export default function TurnResultModal({ outcome, state, onClose }) {
             풍향: {outcome.windClass.label} · 식량·식수 -{outcome.foodCost}
           </span>
           <span>
-            {outcome.nextStatus === 'active' ? '다음: 2단계 상황 카드' : '항해 종료'}
+            {outcome.nextStatus === 'active'
+              ? '다음: 2단계 상황 카드'
+              : outcome.nextStatus === 'returned'
+                ? '목표 달성 · 항해 완료!'
+                : '항해 종료'}
           </span>
         </div>
 
@@ -160,7 +166,11 @@ export default function TurnResultModal({ outcome, state, onClose }) {
           onClick={onClose}
           className="mt-3.5 w-full rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] py-2.5 text-sm font-black text-slate-950 transition cursor-pointer"
         >
-          {outcome.nextStatus === 'active' ? '2단계: 상황 카드 뽑기' : '최종 정산 보기'}
+          {outcome.nextStatus === 'active'
+            ? '2단계: 상황 카드 뽑기'
+            : outcome.nextStatus === 'returned'
+              ? '🏆 위대한 업적 & 축하 보기'
+              : '최종 정산 보기'}
         </button>
       </div>
     </div>

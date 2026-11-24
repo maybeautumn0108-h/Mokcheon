@@ -36,6 +36,23 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
 
   // Route segments split at ±180° antimeridian where applicable
   const routeVisual = useMemo(() => {
+    if (mission.id === 'mission_event_cape') {
+      return {
+        paths: [
+          pointsToSvgPath([
+            [-9.1, 38.7],
+            [-18, 22],
+            [-23.6, 15],
+            [-14, -10],
+            [6, -32],
+            [18.5, -34.5],
+          ]),
+        ],
+        target: { lon: 18.5, lat: -34.5, label: '목표: 희망봉 (10턴 단방향!)' },
+        blockedCape: false,
+      };
+    }
+
     if (mission.id === 'mission_1') {
       return {
         paths: [
@@ -245,9 +262,9 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
                 <circle cx="0" cy="0" r="10" fill="#b91c1c" opacity="0.18" />
                 <circle cx="0" cy="0" r="5" fill="#b91c1c" stroke="#fef3c7" strokeWidth="1.3" />
                 <text
-                  x={mission.id === 'mission_3' ? 8 : -8}
+                  x={mission.id === 'mission_3' || mission.id === 'mission_event_cape' ? 8 : -8}
                   y={mission.id === 'mission_3' ? -7 : -8}
-                  textAnchor={mission.id === 'mission_3' ? 'start' : 'end'}
+                  textAnchor={mission.id === 'mission_3' || mission.id === 'mission_event_cape' ? 'start' : 'end'}
                   fontSize="6.8"
                   fontWeight="bold"
                   fill="#7f1d1d"
@@ -275,7 +292,7 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
               <div className="flex items-start gap-1.5">
                 <Compass className="w-3.5 h-3.5 text-[#7a4b1e] shrink-0 mt-0.5" />
                 <span>
-                  <strong>1. 조타·작도:</strong> 방위와 바람(1~4 cm)에 맞춰 항해한 뒤 B4 지도에 기록하세요. <strong>3턴마다 지도로 현재 위치</strong>가 공개되며, 빈 땅 상륙 시 원주민을 만날 수 있습니다!
+                  <strong>1. 조타·작도:</strong> 방위와 바람(1~4 cm)에 맞춰 항해한 뒤 B4 지도에 기록하세요. <strong>{mission.positionCheckInterval || 3}턴마다 지도로 현재 위치</strong>가 공개되며, 빈 땅 상륙 시 원주민을 만날 수 있습니다!
                 </span>
               </div>
               <div className="flex items-start gap-1.5">

@@ -473,9 +473,15 @@ export function executeSailTurn(state, rng = Math.random) {
   );
   const nextGold = Math.max(0, state.gold + (nativeEncounter?.goldDelta || 0));
 
+  const mission = getMissionById(state.missionId);
   let nextStatus = 'active';
   const nextTurn = state.turn + 1;
-  const missionMaxTurns = getMissionById(state.missionId).maxTurns;
+  const missionMaxTurns = mission.maxTurns;
+  const checkInterval = mission.positionCheckInterval || POSITION_CHECK_INTERVAL_TURNS;
+
+  // One-way event mission (e.g. Hope Cape) succeeds immediately upon reaching goalPortId!
+  const reachedOneWayGoal =
+    Boolean(mission.isOneWayGoal && mission.goalPortId && nearbyPort?.id === mission.goalPortId);
 
   // For Missions 2 & 3, only treat returning to Lisbon as voyage completion once mission checkpoints are met
   const preProgress = evaluateMissionProgress(
@@ -489,6 +495,8 @@ export function executeSailTurn(state, rng = Math.random) {
     nextStatus = 'sunk';
   } else if (nextFood <= 0) {
     nextStatus = 'stranded';
+  } else if (reachedOneWayGoal) {
+    nextStatus = 'returned';
   } else if (
     hasDepartedLisbon &&
     nearbyPort?.id === 'lisbon' &&
@@ -500,14 +508,21 @@ export function executeSailTurn(state, rng = Math.random) {
     nextStatus = 'timeup';
   }
 
+  const nextVisitedPorts =
+    reachedOneWayGoal && nearbyPort && !(state.visitedPorts || []).includes(nearbyPort.id)
+      ? [...(state.visitedPorts || []), nearbyPort.id]
+      : state.visitedPorts;
+
   const turnInfo = getTurnInfo(state.turn);
-  const logTitle = moveResult.collided
-    ? moveResult.hitBoundary
-      ? `제${state.turn}턴 항해 · 해역 경계 도달 정지 (${moveResult.actualCm.toFixed(1)} cm)`
-      : moveResult.actualCm <= 0.05
-        ? `제${state.turn}턴 항해 · 육지에 가로막혀 이동 불가`
-        : `제${state.turn}턴 항해 · 육지에 닿아 정지 (${moveResult.actualCm.toFixed(1)} cm)`
-    : `제${state.turn}턴 항해 완료 · 자로 ${planned.effectiveCm.toFixed(1)} cm 이동`;
+  const logTitle = reachedOneWayGoal
+    ? `제${state.turn}턴 · ${nearbyPort.name} 도착! 미션 대성공!`
+    : moveResult.collided
+      ? moveResult.hitBoundary
+        ? `제${state.turn}턴 항해 · 해역 경계 도달 정지 (${moveResult.actualCm.toFixed(1)} cm)`
+        : moveResult.actualCm <= 0.05
+          ? `제${state.turn}턴 항해 · 육지에 가로막혀 이동 불가`
+          : `제${state.turn}턴 항해 · 육지에 닿아 정지 (${moveResult.actualCm.toFixed(1)} cm)`
+      : `제${state.turn}턴 항해 완료 · 자로 ${planned.effectiveCm.toFixed(1)} cm 이동`;
 
   const blockedText =
     moveResult.blockedRanges.length > 0
@@ -515,7 +530,7 @@ export function executeSailTurn(state, rng = Math.random) {
       : '';
   const polarZone = getPolarZone(moveResult.endLat);
   const polarText = polarZone ? ` · ${polarZone.shortLabel}` : '';
-  const isPositionCheckTurn = state.turn % POSITION_CHECK_INTERVAL_TURNS === 0;
+  const isPositionCheckTurn = state.turn % checkInterval === 0;
 
   const logDetail = `방위 ${String(planned.headingDeg).padStart(3, '0')}° · ${planned.windClass.label}${
     state.isFullSail ? '(전속)' : ''
@@ -545,10 +560,11 @@ export function executeSailTurn(state, rng = Math.random) {
     food: nextFood,
     hull: nextHull,
     gold: nextGold,
-    turnsWithoutPort: nextTurnsWithoutPort,
-    isSpoiled: nextIsSpoiled,
-    isDocked: false,
-    currentPortId: null,
+    turnsWithoutPort: reachedOneWayGoal ? 0 : nextTurnsWithoutPort,
+    isSpoiled: reachedOneWayGoal ? false : nextIsSpoiled,
+    isDocked: reachedOneWayGoal,
+    currentPortId: reachedOneWayGoal ? nearbyPort.id : null,
+    visitedPorts: nextVisitedPorts,
     hasDepartedLisbon,
     nextTurnBonusCm: 0,
     nextTurnMaxCm: null,
@@ -585,6 +601,7 @@ export function executeSailTurn(state, rng = Math.random) {
     polarZone,
     nativeEncounter,
     isPositionCheckTurn,
+    positionCheckInterval: checkInterval,
     nextStatus,
   };
 
@@ -689,14 +706,18 @@ export function enterPortInActivity(state) {
     ? state.visitedPorts
     : [...state.visitedPorts, port.id];
 
+  const mission = getMissionById(state.missionId);
   const preProgress = evaluateMissionProgress(
     { ...state, visitedPorts, status: 'returned' },
     state.missionId,
   );
   const canCompleteAtLisbon =
     state.missionId === 'mission_1' ? true : preProgress.goalAchieved;
+  const reachedOneWayGoal =
+    Boolean(mission.isOneWayGoal && mission.goalPortId && port.id === mission.goalPortId);
   const isReturningHome =
-    state.hasDepartedLisbon && port.id === 'lisbon' && canCompleteAtLisbon;
+    reachedOneWayGoal ||
+    (state.hasDepartedLisbon && port.id === 'lisbon' && canCompleteAtLisbon);
 
   const nextState = {
     ...state,
@@ -981,7 +1002,11 @@ export function calculateFinalSettlement(state) {
   const totalScore = state.gold + cargoTotal + resourceBonus + missionBonus;
 
   let rankLabel = '무사 귀항 항해사';
-  if (mission.id === 'mission_3') {
+  if (mission.id === 'mission_event_cape') {
+    rankLabel = missionProgress.goalAchieved
+      ? '희망봉 개척 대영웅 (인도양의 문을 연 전설의 항해사!)'
+      : '희망봉 도달 미완수';
+  } else if (mission.id === 'mission_3') {
     rankLabel = missionProgress.goalAchieved
       ? '세계 일주 대제독 (마젤란·엘카노 완주!)'
       : '부분 항해 귀항 (세계 일주 조건 미달)';

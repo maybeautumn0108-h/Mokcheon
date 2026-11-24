@@ -97,6 +97,14 @@ function wpPort(portId) {
 }
 
 export function getMissionWaypoints(missionId = 'mission_1') {
+  if (missionId === 'mission_event_cape') {
+    return [
+      { lat: 12.0, lon: -25.0, label: '대서양 개방 해역' },
+      { lat: -20.0, lon: -18.0, label: '남대서양 외해' },
+      wpPort('goodhope'),
+    ].filter(Boolean);
+  }
+
   if (missionId === 'mission_2') {
     return [
       { lat: 12.0, lon: -26.0, label: '대서양 남서 진입' },
@@ -279,7 +287,9 @@ export function chooseAiSailDecision(
       ? 'maluku'
       : missionId === 'mission_2'
         ? 'macau'
-        : 'lisbon';
+        : missionId === 'mission_event_cape'
+          ? 'goodhope'
+          : 'lisbon';
 
   // Level 1: Clueless novice wandering nearby Atlantic/Europe waters
   if (level === 1) {
@@ -704,6 +714,7 @@ export function runAiActivityStep(
     const isGoal =
       (missionId === 'mission_1' && nearbyPort.id === 'maluku') ||
       (missionId === 'mission_2' && nearbyPort.id === 'macau') ||
+      (missionId === 'mission_event_cape' && nearbyPort.id === 'goodhope') ||
       nearbyPort.isHomePort;
     const shouldDock =
       level === 1

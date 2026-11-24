@@ -29,9 +29,10 @@ import InteractionModal from './components/InteractionModal.jsx';
 import TurnTransitionOverlay from './components/TurnTransitionOverlay.jsx';
 import MissionBriefingModal from './components/MissionBriefingModal.jsx';
 import VoyageTrailMap from './components/VoyageTrailMap.jsx';
+import MissionSuccessTributeModal from './components/MissionSuccessTributeModal.jsx';
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { getTurnInfo } from './data/calendar.js';
-import { getMissionById } from './data/missions.js';
+import { evaluateMissionProgress, getMissionById } from './data/missions.js';
 import {
   applySituationCardToState,
   buySpecialty,
@@ -127,6 +128,13 @@ function saveIdSet(key, setObj) {
 function getEndMeta(status, missionId) {
   const mission = getMissionById(missionId);
   if (status === 'returned') {
+    if (mission.id === 'mission_event_cape') {
+      return {
+        title: '희망봉 정복 대성공!',
+        tone: 'emerald',
+        desc: `${mission.maxTurns}턴 이내에 희망봉에 도착하여 전설의 항해사로 추앙받았습니다!`,
+      };
+    }
     return {
       title: '리스본 무사 귀항 성공!',
       tone: 'emerald',
@@ -212,6 +220,7 @@ export default function App() {
   const [turnTransition, setTurnTransition] = useState(null);
   const [showMissionBriefing, setShowMissionBriefing] = useState(false);
   const [showPositionCheckMap, setShowPositionCheckMap] = useState(false);
+  const [showSuccessTribute, setShowSuccessTribute] = useState(false);
 
   const sailTimerRef = useRef(null);
   const turnAnimTimerRef = useRef(null);
@@ -1033,6 +1042,7 @@ export default function App() {
     setTurnOutcome(null);
     setDrawnCards(null);
     setShowSettlement(false);
+    setShowSuccessTribute(false);
     setDraftTradePeer(null);
     setLocalDemoInteraction(null);
     setPlayMode('lobby');
@@ -1413,6 +1423,7 @@ export default function App() {
     setDockToast(null);
     setTurnToast(null);
     setShowSettlement(false);
+    setShowSuccessTribute(false);
     setDraftTradePeer(null);
     setLocalDemoInteraction(null);
     clearLocalGameState();
@@ -1457,13 +1468,24 @@ export default function App() {
     });
   };
 
+  const openEndGameModal = (nextState) => {
+    if (
+      nextState.status === 'returned' &&
+      evaluateMissionProgress(nextState, nextState.missionId).goalAchieved
+    ) {
+      setShowSuccessTribute(true);
+    } else {
+      setShowSettlement(true);
+    }
+  };
+
   const handleCloseTurnModal = () => {
     const wasActive = gameState.status === 'active';
     setTurnOutcome(null);
     if (wasActive) {
       setDrawnCards(drawThreeSituationCards());
     } else {
-      setShowSettlement(true);
+      openEndGameModal(gameState);
     }
   };
 
@@ -1474,7 +1496,7 @@ export default function App() {
     setDrawnCards(null);
     if (hintText) setCardHintBanner(hintText);
     if (nextState.status !== 'active') {
-      setShowSettlement(true);
+      openEndGameModal(nextState);
     }
   };
 
@@ -1483,7 +1505,7 @@ export default function App() {
     const { nextState, dockedPort } = enterPortInActivity(gameState);
     setGameState(nextState);
     if (nextState.status !== 'active') {
-      setShowSettlement(true);
+      openEndGameModal(nextState);
       return;
     }
     if (dockedPort) {
@@ -1776,6 +1798,7 @@ export default function App() {
   }
 
   const endMeta = getEndMeta(gameState.status, gameState.missionId);
+  const positionCheckInterval = getMissionById(gameState.missionId).positionCheckInterval || 3;
   const cardsReadyCount = onlineRealFleets.filter(
     (f) =>
       f.status !== 'active' ||
@@ -1942,12 +1965,12 @@ export default function App() {
               {gameState.status === 'active' &&
                 turnStep !== 'sail' &&
                 (gameState.activeTurn || 0) > 0 &&
-                (gameState.activeTurn || 0) % 3 === 0 && (
+                (gameState.activeTurn || 0) % positionCheckInterval === 0 && (
                   <div className="rounded-xl border border-sky-400/50 bg-sky-950/50 px-3 py-2 text-xs text-sky-100 flex items-center justify-between gap-2 shadow">
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-sky-400 shrink-0" />
                       <span>
-                        <strong>제{gameState.activeTurn}턴 정기 위치 확인:</strong> 지도로 현재 위치를 파악하세요!
+                        <strong>제{gameState.activeTurn}턴 정기 위치 확인 ({positionCheckInterval}턴 주기):</strong> 지도로 현재 위치를 파악하세요!
                       </span>
                     </div>
                     <button
@@ -2186,6 +2209,17 @@ export default function App() {
           onCloseCompleted={handleCloseCompletedInteraction}
         />
       )}
+      {showSuccessTribute && settlement && (
+        <MissionSuccessTributeModal
+          settlement={settlement}
+          state={gameState}
+          teamName={teamName}
+          onViewSettlement={() => {
+            setShowSuccessTribute(false);
+            setShowSettlement(true);
+          }}
+        />
+      )}
       {showSettlement && (
         <SettlementModal
           settlement={settlement}
@@ -2207,7 +2241,7 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div className="text-sm font-black text-sky-300 flex items-center gap-1.5">
                 <MapPin className="w-4 h-4" />
-                제{gameState.activeTurn || gameState.turn}턴 정기 위치 확인 (3턴 주기)
+                제{gameState.activeTurn || gameState.turn}턴 정기 위치 확인 ({positionCheckInterval}턴 주기)
               </div>
               <button
                 type="button"
