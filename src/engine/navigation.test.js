@@ -35,6 +35,13 @@ import {
   validateTradeOffer,
 } from './interactions.js';
 import {
+  MAX_AI_PER_ROOM,
+  computeAiInteractionResponse,
+  createAiFleetPayload,
+  runAiActivityStep,
+  runAiSailAndCardStep,
+} from './aiPlayer.js';
+import {
   SAFE_OFFSHORE_DEG,
   applySituationCardToState,
   b4EuclideanDeg,
@@ -709,4 +716,93 @@ test('Ports have wider docking radius (>= 5.0°) and interaction guards prevent 
   ];
   assert.equal(selectActiveInteractionForPlayer(staleList, 'team-b', 3, new Set()), null);
   assert.equal(selectActiveInteractionForPlayer(staleList, 'team-b', 2, new Set())?.id, 'old-battle');
+});
+
+test('AI players cap at 3/room, stay online, battle/trade proactively, and Lv.4 outperforms Lv.1', () => {
+  // Enforce MAX_AI_PER_ROOM = 3
+  const list = [];
+  for (let i = 0; i < MAX_AI_PER_ROOM; i++) {
+    const ai = createAiFleetPayload({
+      existingFleets: list,
+      personality: i === 0 ? 'pirate' : i === 1 ? 'explorer' : 'merchant',
+      level: i + 2,
+      missionId: 'mission_1',
+    });
+    assert.ok(ai);
+    assert.equal(isFleetOffline({ ...ai, updatedAt: Date.now() - 120000 }), false);
+    list.push(ai);
+  }
+  assert.equal(
+    createAiFleetPayload({ existingFleets: list, personality: 'pirate', level: 4 }),
+    null,
+  );
+
+  // Pirate AI initiates proactive battle against nearby human fleet in Step 3
+  const pirate = list[0];
+  const nearbyHuman = {
+    clientId: 'human-1',
+    teamName: '1조 학생',
+    status: 'active',
+    lat: pirate.lat,
+    lon: pirate.lon - 2.0,
+    headingDeg: 180,
+  };
+  const actRes = runAiActivityStep(
+    pirate,
+    1,
+    'mission_1',
+    [pirate, nearbyHuman],
+    [],
+    () => 0.1, // triggers battleChance (0.72)
+  );
+  assert.equal(actRes.newInteraction?.type, 'battle');
+  assert.equal(actRes.newInteraction?.initiatorId, pirate.clientId);
+
+  // AI plays pure random RPS choice in active battle
+  const resp = computeAiInteractionResponse(
+    pirate,
+    {
+      id: 'b-ai',
+      type: 'battle',
+      status: 'active',
+      initiatorId: 'human-1',
+      targetId: pirate.clientId,
+      payload: createInitialBattlePayload(),
+    },
+    () => 0.4,
+  );
+  assert.ok(['rock', 'paper', 'scissors'].includes(resp.patch.payload.targetChoice));
+
+  // Deterministic PRNG helper to compare Lv.1 Novice vs Lv.4 Master over Mission 1 (30 turns)
+  const makeRng = (seed = 42) => {
+    let s = seed;
+    return () => {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+  };
+
+  let lv1 = createAiFleetPayload({ personality: 'explorer', level: 1, missionId: 'mission_1' });
+  let lv4 = createAiFleetPayload({ personality: 'explorer', level: 4, missionId: 'mission_1' });
+  const rng1 = makeRng(7);
+  const rng4 = makeRng(7);
+
+  for (let t = 1; t <= 30; t++) {
+    if (lv1.status === 'active') {
+      lv1 = runAiSailAndCardStep(lv1, t, 'mission_1', rng1);
+      lv1 = runAiActivityStep(lv1, t, 'mission_1', [lv1], [], rng1).updatedFleet;
+    }
+    if (lv4.status === 'active') {
+      lv4 = runAiSailAndCardStep(lv4, t, 'mission_1', rng4);
+      lv4 = runAiActivityStep(lv4, t, 'mission_1', [lv4], [], rng4).updatedFleet;
+    }
+  }
+
+  // Lv.1 Novice never reaches Maluku/returns, while Lv.4 Master achieves Mission 1 goal!
+  assert.notEqual(lv1.status, 'returned');
+  assert.equal(lv4.status, 'returned');
+  assert.equal(
+    evaluateMissionProgress(lv4.aiConfig.state, 'mission_1').goalAchieved,
+    true,
+  );
 });

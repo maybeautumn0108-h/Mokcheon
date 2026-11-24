@@ -99,6 +99,13 @@ import {
   updateRoomInSupabase,
   upsertPlayerToSupabase,
 } from './engine/fleetSync.js';
+import {
+  applyResolvedInteractionToAiFleet,
+  computeAiInteractionResponse,
+  createAiFleetPayload,
+  runAiActivityStep,
+  runAiSailAndCardStep,
+} from './engine/aiPlayer.js';
 
 function loadIdSet(key) {
   try {
@@ -200,6 +207,7 @@ export default function App() {
   const [isTeacherMode, setIsTeacherMode] = useState(false);
   const [teacherAllRooms, setTeacherAllRooms] = useState([]);
   const [teacherAllFleetsByRoom, setTeacherAllFleetsByRoom] = useState({});
+  const [teacherOpenInteractions, setTeacherOpenInteractions] = useState([]);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [turnTransition, setTurnTransition] = useState(null);
   const [showMissionBriefing, setShowMissionBriefing] = useState(false);
@@ -213,6 +221,7 @@ export default function App() {
   const prevRoomTurnPhaseRef = useRef('sail_card');
   const prevCriticalSigRef = useRef('');
   const appliedInteractionIdsRef = useRef(loadIdSet(`age_of_sail_applied_${clientId}`));
+  const aiDriverLockRef = useRef(new Map());
 
   useEffect(() => {
     saveIdSet(`age_of_sail_dismissed_${clientId}`, dismissedInteractionIds);
@@ -318,12 +327,19 @@ export default function App() {
       return subscribeToAllRoomsSupabase({
         onRoomsChange: (rooms) => setTeacherAllRooms(rooms),
         onFleetsChange: (byRoom) => setTeacherAllFleetsByRoom(byRoom),
+        onOpenInteractionsChange: (inters) => setTeacherOpenInteractions(inters),
       });
     }
 
     const syncLocalAll = () => {
-      setTeacherAllRooms(loadAllLocalRoomsMeta());
+      const rooms = loadAllLocalRoomsMeta();
+      setTeacherAllRooms(rooms);
       setTeacherAllFleetsByRoom(loadAllLocalFleets());
+      const allInters = [];
+      for (const r of rooms) {
+        allInters.push(...loadLocalInteractions(r.roomCode));
+      }
+      setTeacherOpenInteractions(allInters);
     };
     syncLocalAll();
     const id = setInterval(syncLocalAll, 2000);
@@ -644,6 +660,197 @@ export default function App() {
     }
   }, [isOnlineSession, roomMeta, realFleets, cleanRoom, nowTick]);
 
+  // Autonomous AI Fleet Driver (Primary: TeacherMode across all rooms; Backup: Room Host / First Online Human)
+  useEffect(() => {
+    if (!isTeacherMode && (!isOnlineSession || roomMeta.phase !== 'playing')) return;
+
+    const acquireLock = (key, ttlMs = 3500) => {
+      const now = Date.now();
+      const map = aiDriverLockRef.current;
+      if (now - (map.get(key) || 0) < ttlMs) return false;
+      map.set(key, now);
+      if (map.size > 250) {
+        for (const [k, ts] of map.entries()) {
+          if (now - ts > 30000) map.delete(k);
+        }
+      }
+      return true;
+    };
+
+    const persistFleetUpdate = async (rc, fleetPayload) => {
+      if (isSupabaseConfigured) {
+        await upsertPlayerToSupabase(rc, fleetPayload);
+      } else {
+        const nextMap = savePlayerToRoom(rc, fleetPayload);
+        if (rc === cleanRoom) setRoomPeersMap(nextMap);
+        channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+      }
+    };
+
+    const driveSingleRoom = async (rc, roomObj, fleetsList, intersList, runBarriers) => {
+      if (!roomObj || roomObj.phase !== 'playing') return;
+      const aiFleets = fleetsList.filter((f) => f.isAi);
+      if (aiFleets.length === 0) return;
+
+      const curTurn = roomObj.currentTurn ?? 1;
+      const turnPhase = roomObj.turnPhase || 'sail_card';
+
+      // A) Apply recently completed interaction outcomes onto AI fleet state
+      for (const inter of intersList) {
+        if (inter.status !== 'completed') continue;
+        if (inter.turn && inter.turn < curTurn - 1) continue;
+        for (const ai of aiFleets) {
+          if (inter.initiatorId !== ai.clientId && inter.targetId !== ai.clientId) continue;
+          const already = (ai.aiConfig?.appliedInteractionIds || []).includes(inter.id);
+          if (already) continue;
+          const lockKey = `ai-apply:${inter.id}:${ai.clientId}`;
+          if (!acquireLock(lockKey, 6000)) continue;
+          const nextAi = applyResolvedInteractionToAiFleet(ai, inter);
+          if (nextAi) {
+            await persistFleetUpdate(rc, nextAi);
+          }
+        }
+      }
+
+      // B) Respond to pending/active interactions targeting or involving an AI fleet
+      for (const inter of intersList) {
+        if (inter.status !== 'pending' && inter.status !== 'active') continue;
+        if (inter.turn && inter.turn < curTurn) continue;
+        for (const ai of aiFleets) {
+          if (inter.initiatorId !== ai.clientId && inter.targetId !== ai.clientId) continue;
+          const roundTag = inter.payload?.round ?? 0;
+          const lockKey = `ai-resp:${inter.id}:${inter.status}:${roundTag}:${ai.clientId}`;
+          const resp = computeAiInteractionResponse(ai, inter);
+          if (!resp) continue;
+          if (!acquireLock(lockKey, 2500)) continue;
+
+          if (isSupabaseConfigured) {
+            await updateInteractionSupabase(inter.id, resp.patch);
+          } else {
+            const list = loadLocalInteractions(rc).map((it) =>
+              it.id === inter.id ? { ...it, ...resp.patch, updatedAt: Date.now() } : it,
+            );
+            saveLocalInteractions(rc, list);
+            if (rc === cleanRoom) setInteractions(list);
+            channelRef.current?.postMessage({ type: 'SYNC_INTERACTIONS' });
+          }
+
+          const mergedInter = { ...inter, ...resp.patch };
+          const nextAi = applyResolvedInteractionToAiFleet(ai, mergedInter, resp.fled);
+          if (nextAi) {
+            await persistFleetUpdate(rc, nextAi);
+          }
+        }
+      }
+
+      // C) Step 1+2 (sail_card) -> auto-sail & auto-pick card
+      if (turnPhase === 'sail_card') {
+        let updatedAny = false;
+        const nextFleetsSnapshot = [...fleetsList];
+        for (let i = 0; i < nextFleetsSnapshot.length; i++) {
+          const f = nextFleetsSnapshot[i];
+          if (!f.isAi || f.status !== 'active') continue;
+          if ((f.cardCompletedTurn ?? 0) >= curTurn) continue;
+          const lockKey = `ai-sail:${rc}:${curTurn}:${f.clientId}`;
+          if (!acquireLock(lockKey, 4500)) continue;
+
+          const nextAi = runAiSailAndCardStep(f, curTurn, roomObj.missionId);
+          nextFleetsSnapshot[i] = nextAi;
+          updatedAny = true;
+          await persistFleetUpdate(rc, nextAi);
+        }
+
+        if (runBarriers && isSupabaseConfigured && updatedAny) {
+          await tryOpenActivityPhaseSupabase(rc, curTurn, nextFleetsSnapshot);
+        }
+      }
+
+      // D) Step 3 (activity) -> port resupply + proactive trade/battle + finalize turn
+      if (turnPhase === 'activity') {
+        let updatedAny = false;
+        const nextFleetsSnapshot = [...fleetsList];
+        const roomIntersSnapshot = [...intersList];
+
+        for (let i = 0; i < nextFleetsSnapshot.length; i++) {
+          const f = nextFleetsSnapshot[i];
+          if (!f.isAi) continue;
+          if ((f.completedTurn ?? 0) >= curTurn) continue;
+          const lockKey = `ai-act:${rc}:${curTurn}:${f.clientId}`;
+          if (!acquireLock(lockKey, 4500)) continue;
+
+          const { updatedFleet, newInteraction } = runAiActivityStep(
+            f,
+            curTurn,
+            roomObj.missionId,
+            nextFleetsSnapshot,
+            roomIntersSnapshot,
+          );
+
+          if (newInteraction) {
+            const payloadWithRoom = { ...newInteraction, roomCode: rc };
+            if (isSupabaseConfigured) {
+              const created = await createInteractionSupabase(payloadWithRoom);
+              if (created) roomIntersSnapshot.unshift(created);
+            } else {
+              const localItem = {
+                ...payloadWithRoom,
+                id: `local-ai-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+              const list = [localItem, ...loadLocalInteractions(rc)];
+              saveLocalInteractions(rc, list);
+              if (rc === cleanRoom) setInteractions(list);
+              roomIntersSnapshot.unshift(localItem);
+              channelRef.current?.postMessage({ type: 'SYNC_INTERACTIONS' });
+            }
+          }
+
+          if (updatedFleet) {
+            nextFleetsSnapshot[i] = updatedFleet;
+            updatedAny = true;
+            await persistFleetUpdate(rc, updatedFleet);
+          }
+        }
+
+        if (runBarriers && isSupabaseConfigured && updatedAny) {
+          await tryAdvanceRoomTurnSupabase(rc, curTurn, nextFleetsSnapshot, roomObj.missionId);
+        }
+      }
+    };
+
+    if (isTeacherMode) {
+      for (const roomObj of teacherAllRooms) {
+        if (roomObj.phase !== 'playing') continue;
+        const fleetsList = Object.values(teacherAllFleetsByRoom[roomObj.roomCode] || {});
+        const intersList = teacherOpenInteractions.filter((i) => i.roomCode === roomObj.roomCode);
+        driveSingleRoom(roomObj.roomCode, roomObj, fleetsList, intersList, true);
+      }
+      return;
+    }
+
+    // Backup driver in student/host room session when TeacherMode is not open
+    const activeOnlineHumans = onlineRealFleets.filter((f) => !f.isAi);
+    const amIBackupDriver =
+      isHost || (activeOnlineHumans.length > 0 && activeOnlineHumans[0].clientId === clientId);
+    if (!amIBackupDriver) return;
+
+    driveSingleRoom(cleanRoom, roomMeta, realFleets, interactions, false);
+  }, [
+    isTeacherMode,
+    teacherAllRooms,
+    teacherAllFleetsByRoom,
+    teacherOpenInteractions,
+    isOnlineSession,
+    roomMeta,
+    realFleets,
+    onlineRealFleets,
+    interactions,
+    cleanRoom,
+    clientId,
+    isHost,
+  ]);
+
   // Apply completed interaction outcome ONCE to local gameState
   const allWatchedInteractions = useMemo(() => {
     return localDemoInteraction ? [localDemoInteraction, ...interactions] : interactions;
@@ -886,6 +1093,18 @@ export default function App() {
       if (updated) {
         if (rc === cleanRoom) setRoomMeta(updated);
         setTeacherAllRooms((prev) => prev.map((r) => (r.roomCode === rc ? updated : r)));
+        // Also re-seed AI fleets in a waiting room so their starting mission matches
+        if (updated.phase === 'waiting') {
+          const fleetsInRoom = Object.values(teacherAllFleetsByRoom[rc] || {});
+          for (const f of fleetsInRoom) {
+            if (!f.isAi) continue;
+            const freshState = createInitialGameState(missionId);
+            await upsertPlayerToSupabase(rc, {
+              ...f,
+              aiConfig: { ...f.aiConfig, waypointIndex: 0, state: freshState },
+            });
+          }
+        }
         sendPingRef.current?.();
       }
     } else {
@@ -896,6 +1115,44 @@ export default function App() {
         channelRef.current?.postMessage({ type: 'SYNC_ROOM' });
       }
       setTeacherAllRooms(loadAllLocalRoomsMeta());
+    }
+  };
+
+  const handleAddAiFleet = async (targetRoomCode, personality = 'pirate', level = 3) => {
+    const rc = targetRoomCode || cleanRoom;
+    const roomObj =
+      teacherAllRooms.find((r) => r.roomCode === rc) || (rc === cleanRoom ? roomMeta : null);
+    const existingFleets = isTeacherMode
+      ? Object.values(teacherAllFleetsByRoom[rc] || {})
+      : realFleets;
+
+    const payload = createAiFleetPayload({
+      existingFleets,
+      personality,
+      level,
+      missionId: roomObj?.missionId || 'mission_1',
+    });
+    if (!payload) return;
+
+    if (isSupabaseConfigured) {
+      await upsertPlayerToSupabase(rc, payload);
+      const [rooms, fleetsByRoom] = await Promise.all([
+        Promise.resolve(teacherAllRooms),
+        fetchRoomFleetsFromSupabase(rc),
+      ]);
+      setTeacherAllFleetsByRoom((prev) => ({ ...prev, [rc]: fleetsByRoom }));
+      if (rc === cleanRoom) {
+        setRoomPeersMap(fleetsByRoom);
+        sendPingRef.current?.();
+      }
+      void rooms;
+    } else {
+      const nextMap = savePlayerToRoom(rc, payload);
+      setTeacherAllFleetsByRoom(loadAllLocalFleets());
+      if (rc === cleanRoom) {
+        setRoomPeersMap(nextMap);
+        channelRef.current?.postMessage({ type: 'SYNC_STATE', clientId });
+      }
     }
   };
 
@@ -1489,6 +1746,7 @@ export default function App() {
         onDeleteRoom={handleDeleteRoomByCode}
         onChangeRoomMission={handleChangeRoomMission}
         onClearInteractionsRoom={handleClearInteractionsByCode}
+        onAddAiFleet={handleAddAiFleet}
       />
     );
   }

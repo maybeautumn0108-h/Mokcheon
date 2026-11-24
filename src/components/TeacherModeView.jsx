@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  Bot,
   CheckCircle2,
   Clock,
   Compass,
@@ -20,6 +21,7 @@ import { LAND_POLYGONS } from '../data/worldCoastlines.js';
 import { PORTS } from '../data/ports.js';
 import { MISSIONS, getMissionById } from '../data/missions.js';
 import { isFleetOffline } from '../engine/fleetSync.js';
+import { AI_LEVELS, AI_PERSONALITIES, MAX_AI_PER_ROOM } from '../engine/aiPlayer.js';
 
 const FLEET_COLORS = ['#ef4444', '#38bdf8', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
 
@@ -38,11 +40,14 @@ export default function TeacherModeView({
   onDeleteRoom,
   onChangeRoomMission,
   onClearInteractionsRoom,
+  onAddAiFleet,
 }) {
   const [hideMap, setHideMap] = useState(false);
   const [selectedRoomFilter, setSelectedRoomFilter] = useState('ALL');
   const [newRoomsInput, setNewRoomsInput] = useState('');
   const [batchMissionId, setBatchMissionId] = useState('mission_1');
+  const [selectedAiPersonality, setSelectedAiPersonality] = useState('pirate');
+  const [selectedAiLevel, setSelectedAiLevel] = useState(3);
 
   // Ensure activeRoomCode is always included even if rooms list is loading
   const roomsList = useMemo(() => {
@@ -217,6 +222,43 @@ export default function TeacherModeView({
               </button>
             ))}
           </div>
+
+          {/* AI Fleet Preset Selector Bar */}
+          {onAddAiFleet && (
+            <div className="w-full pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 font-bold text-violet-300">
+                  <Bot className="w-4 h-4 text-violet-400" />
+                  AI 선단 추가 설정 (방당 최대 {MAX_AI_PER_ROOM}척):
+                </span>
+                <select
+                  value={selectedAiPersonality}
+                  onChange={(e) => setSelectedAiPersonality(e.target.value)}
+                  className="rounded-lg border border-violet-500/40 bg-slate-950 px-2.5 py-1 text-xs font-bold text-violet-200 cursor-pointer"
+                >
+                  {Object.values(AI_PERSONALITIES).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.badge} ({p.label})
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selectedAiLevel}
+                  onChange={(e) => setSelectedAiLevel(Number(e.target.value))}
+                  className="rounded-lg border border-violet-500/40 bg-slate-950 px-2.5 py-1 text-xs font-bold text-amber-200 cursor-pointer"
+                >
+                  {AI_LEVELS.map((lv) => (
+                    <option key={lv.level} value={lv.level}>
+                      {lv.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {AI_LEVELS.find((l) => l.level === selectedAiLevel)?.desc}
+              </span>
+            </div>
+          )}
         </section>
 
         {/* Multi-Room Management Grid */}
@@ -328,9 +370,15 @@ export default function TeacherModeView({
                             offline ? 'opacity-50' : ''
                           }`}
                         >
-                          <span className="font-bold text-slate-200 truncate">
-                            {f.teamName}
-                            <span className="text-[10px] text-slate-400 ml-1">
+                          <span className="font-bold text-slate-200 truncate flex items-center gap-1">
+                            {f.isAi && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-violet-500/25 border border-violet-400/40 px-1 py-0 text-[9px] font-black text-violet-200 shrink-0">
+                                <Bot className="w-2.5 h-2.5" />
+                                Lv.{f.aiConfig?.level || 3}
+                              </span>
+                            )}
+                            <span className="truncate">{f.teamName}</span>
+                            <span className="text-[10px] text-slate-400">
                               ({f.gold}G · 식량{f.food})
                             </span>
                           </span>
@@ -405,6 +453,27 @@ export default function TeacherModeView({
                     >
                       교전 해제
                     </button>
+                  )}
+
+                  {phase !== 'finished' && onAddAiFleet && (
+                    (() => {
+                      const aiCount = roomFleets.filter((f) => f.isAi).length;
+                      const full = aiCount >= MAX_AI_PER_ROOM;
+                      return (
+                        <button
+                          type="button"
+                          disabled={full}
+                          onClick={() =>
+                            onAddAiFleet(room.roomCode, selectedAiPersonality, selectedAiLevel)
+                          }
+                          title={`선택된 성향/단계 AI 추가 (${aiCount}/${MAX_AI_PER_ROOM}척)`}
+                          className="inline-flex items-center gap-1 rounded-lg border border-violet-400/50 bg-violet-500/20 hover:bg-violet-500/30 disabled:opacity-40 px-2 py-1.5 text-[11px] font-bold text-violet-200 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <Bot className="w-3 h-3" />
+                          AI+ ({aiCount}/{MAX_AI_PER_ROOM})
+                        </button>
+                      );
+                    })()
                   )}
 
                   <button

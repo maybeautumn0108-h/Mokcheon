@@ -155,6 +155,8 @@ export function loadAllLocalFleets() {
 }
 
 function rowToFleet(row) {
+  const aiConfig = row.ai_config || null;
+  const isAi = Boolean(aiConfig?.isAi || String(row.client_id || '').startsWith('ai-'));
   return {
     clientId: row.client_id,
     teamName: row.team_name,
@@ -171,6 +173,8 @@ function rowToFleet(row) {
     lastEvent: row.last_event,
     status: row.status,
     trail: Array.isArray(row.trail) ? row.trail : [],
+    aiConfig,
+    isAi,
     updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   };
 }
@@ -266,7 +270,8 @@ export async function updateRoomInSupabase(roomCode, patch) {
 }
 
 export function isFleetOffline(fleet, nowMs = Date.now()) {
-  if (!fleet || fleet.isDemo) return false;
+  if (!fleet || fleet.isDemo || fleet.isAi || fleet.aiConfig?.isAi) return false;
+  if (String(fleet.clientId || '').startsWith('ai-')) return false;
   if (!fleet.updatedAt) return false;
   return nowMs - fleet.updatedAt > OFFLINE_TIMEOUT_MS;
 }
@@ -404,6 +409,7 @@ export async function upsertPlayerToSupabase(roomCode, playerPayload) {
       last_event: playerPayload.lastEvent,
       status: playerPayload.status,
       trail: playerPayload.trail,
+      ai_config: playerPayload.aiConfig ?? null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'room_code,client_id' },
@@ -705,18 +711,39 @@ export async function ensureRoomsBatchSupabase(
   return fetchAllRoomsSupabase();
 }
 
-export function subscribeToAllRoomsSupabase({ onRoomsChange, onFleetsChange }) {
+export async function fetchAllOpenInteractionsSupabase() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('interactions')
+    .select('*')
+    .in('status', ['pending', 'active', 'completed'])
+    .order('updated_at', { ascending: false })
+    .limit(120);
+  if (error) {
+    console.warn('[Supabase] fetchAllOpenInteractions error:', error.message);
+    return [];
+  }
+  return (data || []).map(rowToInteraction);
+}
+
+export function subscribeToAllRoomsSupabase({
+  onRoomsChange,
+  onFleetsChange,
+  onOpenInteractionsChange,
+}) {
   if (!supabase) return () => {};
   let active = true;
 
   const refreshAll = async () => {
-    const [rooms, fleetsByRoom] = await Promise.all([
+    const [rooms, fleetsByRoom, openInteractions] = await Promise.all([
       fetchAllRoomsSupabase(),
       fetchAllFleetsGroupedSupabase(),
+      fetchAllOpenInteractionsSupabase(),
     ]);
     if (!active) return;
     onRoomsChange?.(rooms);
     onFleetsChange?.(fleetsByRoom);
+    onOpenInteractionsChange?.(openInteractions);
   };
 
   refreshAll();
@@ -727,6 +754,9 @@ export function subscribeToAllRoomsSupabase({ onRoomsChange, onFleetsChange }) {
       refreshAll();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'fleets' }, () => {
+      refreshAll();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, () => {
       refreshAll();
     })
     .subscribe();

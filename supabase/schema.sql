@@ -32,6 +32,7 @@ create table if not exists public.fleets (
   last_event text,
   status text not null default 'active',
   trail jsonb not null default '[]'::jsonb,
+  ai_config jsonb,
   updated_at timestamptz not null default now(),
   primary key (room_code, client_id)
 );
@@ -41,6 +42,9 @@ alter table public.fleets
 
 alter table public.fleets
   add column if not exists completed_turn integer not null default 0;
+
+alter table public.fleets
+  add column if not exists ai_config jsonb;
 
 create table if not exists public.interactions (
   id uuid primary key default gen_random_uuid(),
