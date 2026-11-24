@@ -511,7 +511,7 @@ export function runAiSailAndCardStep(aiFleet, roomTurn, roomMissionId, rng = Mat
   state = sailResult.nextState;
 
   if (state.status === 'active') {
-    const cards = drawThreeSituationCards();
+    const cards = drawThreeSituationCards(rng);
     const pickedCard = pickAiSituationCard(cards, level, rng);
     const cardRes = applySituationCardToState(state, pickedCard);
     state = cardRes.nextState;

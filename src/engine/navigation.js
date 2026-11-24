@@ -568,7 +568,7 @@ export function executeSailTurn(state, rng = Math.random) {
     hasDepartedLisbon,
     nextTurnBonusCm: 0,
     nextTurnMaxCm: null,
-    weatherId: rollWeather(moveResult.endLat),
+    weatherId: rollWeather(moveResult.endLat, rng),
     status: nextStatus,
     trail: [...state.trail, { turn: state.turn, lat: moveResult.endLat, lon: moveResult.endLon }],
     logs: [

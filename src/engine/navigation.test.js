@@ -798,8 +798,11 @@ test('AI players cap at 3/room, stay online, battle/trade proactively, and Lv.4 
     }
   }
 
-  // Lv.1 Novice never reaches Maluku/returns, while Lv.4 Master achieves Mission 1 goal!
-  assert.notEqual(lv1.status, 'returned');
+  // Lv.1 Novice fails Mission 1 goal (never completes Maluku voyage), while Lv.4 Master returns with goal achieved!
+  assert.equal(
+    evaluateMissionProgress(lv1.aiConfig.state, 'mission_1').goalAchieved,
+    false,
+  );
   assert.equal(lv4.status, 'returned');
   assert.equal(
     evaluateMissionProgress(lv4.aiConfig.state, 'mission_1').goalAchieved,
