@@ -6,6 +6,7 @@ import {
   Compass,
   Crosshair,
   Droplets,
+  Eye,
   Lock,
   Sparkles,
   Sun,
