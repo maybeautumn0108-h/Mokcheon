@@ -925,3 +925,48 @@ test('20. 3-segment island bypass resumes original heading after Taiwan, and sma
   assert.ok(coastGlideToPort.actualCm < 2.5, 'Should stop early upon entering Elmina radius');
   assert.equal(findNearbyPort(coastGlideToPort.endLat, coastGlideToPort.endLon)?.id, 'elmina');
 });
+
+test('21. Settlement calculates navigation grade (S/A/B/C/D) consistently for report cards', () => {
+  const capeWinHigh = calculateFinalSettlement({
+    ...createInitialGameState('mission_event_cape'),
+    status: 'returned',
+    visitedPorts: ['lisbon', 'goodhope'],
+    gold: 500,
+    food: 100,
+    hull: 100,
+  });
+  assert.equal(capeWinHigh.grade, 'S');
+
+  const capeWinLower = calculateFinalSettlement({
+    ...createInitialGameState('mission_event_cape'),
+    status: 'returned',
+    visitedPorts: ['lisbon', 'goodhope'],
+    gold: 100,
+    food: 20,
+    hull: 50,
+  });
+  assert.equal(capeWinLower.grade, 'A');
+
+  const partialReturn = calculateFinalSettlement({
+    ...createInitialGameState('mission_1'),
+    status: 'returned',
+    visitedPorts: ['lisbon', 'canaries'],
+    gold: 300,
+    food: 50,
+    hull: 50,
+  });
+  assert.equal(partialReturn.grade, 'B');
+
+  const openSeaTimeup = calculateFinalSettlement({
+    ...createInitialGameState('mission_1'),
+    status: 'timeup',
+    isDocked: false,
+  });
+  assert.equal(openSeaTimeup.grade, 'C');
+
+  const disaster = calculateFinalSettlement({
+    ...createInitialGameState('mission_1'),
+    status: 'stranded',
+  });
+  assert.equal(disaster.grade, 'D');
+});

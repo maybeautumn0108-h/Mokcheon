@@ -1268,6 +1268,30 @@ export function sellCargoItem(state, index) {
 /**
  * Final Settlement Calculator matching SPEC §6.
  */
+export function computeVoyageGrade({ outcomeType, mission, missionProgress, totalScore }) {
+  if (outcomeType === 'disaster') {
+    return { grade: 'D', gradeTitle: '재도전 항해단' };
+  }
+  if (outcomeType === 'open_sea_timeup') {
+    return { grade: 'C', gradeTitle: '도전 항해사' };
+  }
+  if (outcomeType === 'overseas_docked') {
+    return { grade: 'B', gradeTitle: '숙련 항해사' };
+  }
+  const goalAchieved = Boolean(missionProgress?.goalAchieved);
+  const sThreshold = mission?.isOneWayGoal ? 850 : 1100;
+  if (goalAchieved && totalScore >= sThreshold) {
+    return { grade: 'S', gradeTitle: '전설의 항해왕' };
+  }
+  if (goalAchieved || totalScore >= 950) {
+    return { grade: 'A', gradeTitle: '일등 항해사' };
+  }
+  return { grade: 'B', gradeTitle: '숙련 항해사' };
+}
+
+/**
+ * Calculate final gold/score breakdown at voyage end.
+ */
 export function calculateFinalSettlement(state) {
   const mission = getMissionById(state.missionId);
   const missionProgress = evaluateMissionProgress(state, mission.id);
@@ -1287,6 +1311,7 @@ export function calculateFinalSettlement(state) {
   const cargoTotal = cargoBreakdown.reduce((sum, item) => sum + item.payout, 0);
 
   if (state.status === 'stranded' || state.status === 'sunk') {
+    const gradeMeta = computeVoyageGrade({ outcomeType: 'disaster', mission, missionProgress, totalScore: 0 });
     return {
       outcomeType: 'disaster',
       mission,
@@ -1299,10 +1324,12 @@ export function calculateFinalSettlement(state) {
       visitedMaluku,
       cargoBreakdown,
       rankLabel: '조난 / 난파',
+      ...gradeMeta,
     };
   }
 
   if (state.status === 'timeup' && !state.isDocked) {
+    const gradeMeta = computeVoyageGrade({ outcomeType: 'open_sea_timeup', mission, missionProgress, totalScore: 0 });
     return {
       outcomeType: 'open_sea_timeup',
       mission,
@@ -1315,11 +1342,13 @@ export function calculateFinalSettlement(state) {
       visitedMaluku,
       cargoBreakdown,
       rankLabel: '망망대해 기한 종료 (조난 처리)',
+      ...gradeMeta,
     };
   }
 
   if (state.status === 'timeup' && state.isDocked) {
     const totalScore = state.gold + cargoTotal;
+    const gradeMeta = computeVoyageGrade({ outcomeType: 'overseas_docked', mission, missionProgress, totalScore });
     return {
       outcomeType: 'overseas_docked',
       mission,
@@ -1332,6 +1361,7 @@ export function calculateFinalSettlement(state) {
       visitedMaluku,
       cargoBreakdown,
       rankLabel: '해외 기항지 정박 (매입 원금 회수)',
+      ...gradeMeta,
     };
   }
 
@@ -1364,6 +1394,7 @@ export function calculateFinalSettlement(state) {
             : '무사 귀항 항해사';
   }
 
+  const gradeMeta = computeVoyageGrade({ outcomeType: 'returned', mission, missionProgress, totalScore });
   return {
     outcomeType: 'returned',
     mission,
@@ -1376,6 +1407,7 @@ export function calculateFinalSettlement(state) {
     visitedMaluku,
     cargoBreakdown,
     rankLabel,
+    ...gradeMeta,
   };
 }
 

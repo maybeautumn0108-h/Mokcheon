@@ -2224,6 +2224,7 @@ export default function App() {
         <SettlementModal
           settlement={settlement}
           state={gameState}
+          teamName={teamName}
           canReset={playMode === 'solo'}
           onReset={handleReset}
           onClose={() => setShowSettlement(false)}
