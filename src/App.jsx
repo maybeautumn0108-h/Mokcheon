@@ -942,6 +942,8 @@ export default function App() {
     [allFleets, clientId, nowTick],
   );
 
+  const windEval = useMemo(() => computePlannedMove(gameState), [gameState]);
+
   const nearbyFleets = useMemo(
     () =>
       getNearbyFleets(
@@ -954,8 +956,6 @@ export default function App() {
       ),
     [gameState.lat, gameState.lon, gameState.headingDeg, otherFleets, windEval?.degPerCm],
   );
-
-  const windEval = useMemo(() => computePlannedMove(gameState), [gameState]);
   const isBlockedAhead = useMemo(
     () => isDirectionImmediatelyBlocked(gameState.lat, gameState.lon, gameState.headingDeg),
     [gameState.lat, gameState.lon, gameState.headingDeg],
