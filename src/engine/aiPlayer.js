@@ -99,8 +99,8 @@ function wpPort(portId) {
 export function getMissionWaypoints(missionId = 'mission_1') {
   if (missionId === 'mission_event_cape') {
     return [
-      { lat: 12.0, lon: -25.0, label: '대서양 개방 해역' },
-      { lat: -20.0, lon: -18.0, label: '남대서양 외해' },
+      { lat: 20.0, lon: -26.0, label: '대서양 외해 (무역풍)' },
+      { lat: -33.0, lon: -16.0, label: '남대서양 환류 · 편서풍 진입' },
       wpPort('goodhope'),
     ].filter(Boolean);
   }

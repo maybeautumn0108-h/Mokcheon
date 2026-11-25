@@ -106,6 +106,7 @@ export function rollNativeEncounter(rng = Math.random) {
 
 export function createInitialGameState(missionId = 'mission_1') {
   const mission = getMissionById(missionId);
+  const startFood = mission.initialFood || INITIAL_FOOD;
   return {
     missionId: mission.id,
     turn: 1,
@@ -118,7 +119,7 @@ export function createInitialGameState(missionId = 'mission_1') {
     lon: LISBON_COORDS.lon,
     headingDeg: 205, // SSW initial course toward Canaries/Atlantic
     isFullSail: false,
-    food: INITIAL_FOOD,
+    food: startFood,
     hull: 100,
     gold: 500,
     cargo: [],
@@ -158,6 +159,8 @@ export function b4EuclideanDeg(lat1, lon1, lat2, lon2) {
  * Compute effective planned movement including situation card modifiers.
  */
 export function computePlannedMove(state) {
+  const mission = getMissionById(state.missionId);
+  const moveScale = mission.moveScale || 1.0;
   const windEval = evaluateWind(
     state.headingDeg,
     state.lat,
@@ -166,9 +169,9 @@ export function computePlannedMove(state) {
     state.isFullSail,
   );
 
-  let effectiveCm = windEval.moveCm + (state.nextTurnBonusCm || 0);
+  let effectiveCm = (windEval.moveCm + (state.nextTurnBonusCm || 0)) * moveScale;
   if (typeof state.nextTurnMaxCm === 'number') {
-    effectiveCm = Math.min(effectiveCm, state.nextTurnMaxCm);
+    effectiveCm = Math.min(effectiveCm, state.nextTurnMaxCm * moveScale);
   }
   effectiveCm = Math.max(0.5, Number(effectiveCm.toFixed(1)));
 
@@ -182,12 +185,22 @@ export function computePlannedMove(state) {
 /**
  * Check if ship is within docking radius of any port.
  */
-export function findNearbyPort(lat, lon) {
+export function findNearbyPort(lat, lon, missionId = null) {
+  const mission = missionId ? getMissionById(missionId) : null;
+  const customGoalRadius =
+    mission?.isOneWayGoal && mission?.goalPortId && mission?.goalDockRadiusDeg
+      ? { id: mission.goalPortId, radius: mission.goalDockRadiusDeg }
+      : null;
+
   let closest = null;
   let closestDist = Infinity;
   for (const port of PORTS) {
+    const effectiveRadius =
+      customGoalRadius && port.id === customGoalRadius.id
+        ? customGoalRadius.radius
+        : port.dockRadiusDeg;
     const dist = b4EuclideanDeg(lat, lon, port.lat, port.lon);
-    if (dist <= port.dockRadiusDeg && dist < closestDist) {
+    if (dist <= effectiveRadius && dist < closestDist) {
       closest = { ...port, distanceDeg: dist };
       closestDist = dist;
     }
@@ -340,7 +353,13 @@ function findDockablePortForStop(
   lat,
   lon,
   excludedPortIds,
-  { includeMajor = true, includeSmallIsland = true, onlyPortId = null } = {},
+  {
+    includeMajor = true,
+    includeSmallIsland = true,
+    onlyPortId = null,
+    goalPortId = null,
+    goalDockRadiusDeg = null,
+  } = {},
 ) {
   let closest = null;
   let closestDist = Infinity;
@@ -352,8 +371,12 @@ function findDockablePortForStop(
       if (port.isSmallIsland && !includeSmallIsland) continue;
       if (!port.isSmallIsland && !includeMajor) continue;
     }
+    const effectiveRadius =
+      goalPortId && port.id === goalPortId && goalDockRadiusDeg != null
+        ? goalDockRadiusDeg
+        : port.dockRadiusDeg;
     const dist = b4EuclideanDeg(lat, lon, port.lat, port.lon);
-    if (dist <= port.dockRadiusDeg && dist < closestDist) {
+    if (dist <= effectiveRadius && dist < closestDist) {
       closest = { id: port.id, name: port.name, lat: port.lat, lon: port.lon, distanceDeg: dist };
       closestDist = dist;
     }
@@ -392,6 +415,7 @@ function marchStraightRay(
     stopOnMajorPort = false,
     stopOnSmallIslandPort = false,
     stopGoalPortId = null,
+    goalDockRadiusDeg = null,
     resumeHeadingDeg = null,
   } = {},
 ) {
@@ -436,10 +460,16 @@ function marchStraightRay(
       includeMajor: stopOnMajorPort,
       includeSmallIsland: stopOnSmallIslandPort,
       onlyPortId: !stopOnMajorPort && !stopOnSmallIslandPort ? stopGoalPortId : null,
+      goalPortId: stopGoalPortId,
+      goalDockRadiusDeg,
     });
     const hitGoal =
       !hitPort && stopGoalPortId
-        ? findDockablePortForStop(curLat, curLon, excludedPortIds, { onlyPortId: stopGoalPortId })
+        ? findDockablePortForStop(curLat, curLon, excludedPortIds, {
+            onlyPortId: stopGoalPortId,
+            goalPortId: stopGoalPortId,
+            goalDockRadiusDeg,
+          })
         : null;
     const matchedPort = hitPort || hitGoal;
     if (matchedPort) {
@@ -474,20 +504,13 @@ function marchStraightRay(
   };
 }
 
-/**
- * Ray-march movement on the B4 Euclidean plane (up to 3 segments):
- * - Leg 1 sails straight along `headingDeg`. Even on open sea, newly entered
- *   small-island ports (Canaries, Azores, Cabo Verde, Guam) or `stopGoalPortId`
- *   halt movement so the ship can dock cleanly and sail away next turn.
- * - If Leg 1 hits coastline (`!hitBoundary`), Leg 2 steers to the closest open
- *   straight coastal heading (up to ±105°).
- * - If Leg 2 clears the island/cape and the original `headingDeg` opens back up,
- *   Leg 3 automatically resumes `headingDeg` with the remaining distance.
- * - While colliding or coastal-skirting (Leg 2 / Leg 3), encountering any newly
- *   entered port halts movement unconditionally right there.
- */
 export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, options = {}) {
-  const { goalPortId = null, stopGoalPortOnLeg1 = false } = options;
+  const {
+    goalPortId = null,
+    stopGoalPortOnLeg1 = false,
+    goalDockRadiusDeg = null,
+    coastalSpeedScale = 1.0,
+  } = options;
   const normHeading = normalizeDeg(headingDeg);
   let curLat = startLat;
   let curLon = startLon;
@@ -511,6 +534,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
     stopOnMajorPort: false,
     stopOnSmallIslandPort: true,
     stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null,
+    goalDockRadiusDeg,
   });
 
   if (!leg1.collided) {
@@ -547,10 +571,12 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
     ? findDockablePortForStop(leg1.endLat, leg1.endLon, startingPortIds, {
         includeMajor: true,
         includeSmallIsland: true,
+        goalPortId,
+        goalDockRadiusDeg,
       })
     : null;
 
-  const remainingDeg = Math.max(0, plannedDeg - leg1.traveledDeg);
+  const remainingDeg = Math.max(0, (plannedDeg - leg1.traveledDeg) * coastalSpeedScale);
 
   // Attempt coastal skirting along the closest open heading when hitting non-boundary land
   let leg2 = null;
@@ -566,7 +592,13 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
           normalizeDeg(normHeading + delta),
           remainingDeg,
           startingPortIds,
-          { stopOnMajorPort: true, stopOnSmallIslandPort: true, resumeHeadingDeg: normHeading },
+          {
+            stopOnMajorPort: true,
+            stopOnSmallIslandPort: true,
+            stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null,
+            goalDockRadiusDeg,
+            resumeHeadingDeg: normHeading,
+          },
         ),
         marchStraightRay(
           leg1.endLat,
@@ -574,7 +606,13 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
           normalizeDeg(normHeading - delta),
           remainingDeg,
           startingPortIds,
-          { stopOnMajorPort: true, stopOnSmallIslandPort: true, resumeHeadingDeg: normHeading },
+          {
+            stopOnMajorPort: true,
+            stopOnSmallIslandPort: true,
+            stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null,
+            goalDockRadiusDeg,
+            resumeHeadingDeg: normHeading,
+          },
         ),
       ];
 
@@ -620,7 +658,12 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
         normHeading,
         leg3Budget,
         startingPortIds,
-        { stopOnMajorPort: true, stopOnSmallIslandPort: true, stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null },
+        {
+          stopOnMajorPort: true,
+          stopOnSmallIslandPort: true,
+          stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null,
+          goalDockRadiusDeg,
+        },
       );
       if (candLeg3.traveledDeg >= 0.2) {
         leg3 = candLeg3;
@@ -750,6 +793,8 @@ export function executeSailTurn(state, rng = Math.random) {
     {
       goalPortId: activeOneWayGoalId,
       stopGoalPortOnLeg1: Boolean(activeOneWayGoalId),
+      goalDockRadiusDeg: mission.goalDockRadiusDeg ?? null,
+      coastalSpeedScale: mission.coastalSpeedScale ?? 1.0,
     },
   );
 
@@ -763,7 +808,7 @@ export function executeSailTurn(state, rng = Math.random) {
   const hullDamage = 0;
   const afterSailHull = Math.max(0, state.hull - hullDamage);
 
-  const nearbyPort = findNearbyPort(moveResult.endLat, moveResult.endLon);
+  const nearbyPort = findNearbyPort(moveResult.endLat, moveResult.endLon, state.missionId);
   const hasDepartedLisbon =
     state.hasDepartedLisbon || nearbyPort?.id !== 'lisbon';
 
@@ -805,8 +850,6 @@ export function executeSailTurn(state, rng = Math.random) {
 
   if (nextHull <= 0) {
     nextStatus = 'sunk';
-  } else if (nextFood <= 0) {
-    nextStatus = 'stranded';
   } else if (reachedOneWayGoal) {
     nextStatus = 'returned';
   } else if (
@@ -816,6 +859,8 @@ export function executeSailTurn(state, rng = Math.random) {
     canCompleteAtLisbon
   ) {
     nextStatus = 'returned';
+  } else if (nextFood <= 0) {
+    nextStatus = 'stranded';
   } else if (state.turn >= missionMaxTurns) {
     nextStatus = 'timeup';
   }
@@ -1036,7 +1081,7 @@ export function applySituationCardToState(state, card) {
  */
 export function enterPortInActivity(state) {
   if (state.status !== 'active') return { nextState: state, dockedPort: null };
-  const port = findNearbyPort(state.lat, state.lon);
+  const port = findNearbyPort(state.lat, state.lon, state.missionId);
   if (!port) return { nextState: state, dockedPort: null };
 
   const resolvedTurn = state.activeTurn || Math.max(1, state.turn - 1);
@@ -1108,7 +1153,7 @@ export function finishActivityTurn(state) {
  */
 export function executeDockTurn(state) {
   if (state.status !== 'active') return { nextState: state, dockedPort: null };
-  const port = findNearbyPort(state.lat, state.lon);
+  const port = findNearbyPort(state.lat, state.lon, state.missionId);
   if (!port) return { nextState: state, dockedPort: null };
 
   const turnInfo = getTurnInfo(state.turn);

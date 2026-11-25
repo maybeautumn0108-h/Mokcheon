@@ -952,8 +952,8 @@ export default function App() {
     [gameState.lat, gameState.lon, gameState.headingDeg],
   );
   const nearbyPort = useMemo(
-    () => findNearbyPort(gameState.lat, gameState.lon),
-    [gameState.lat, gameState.lon],
+    () => findNearbyPort(gameState.lat, gameState.lon, gameState.missionId),
+    [gameState.lat, gameState.lon, gameState.missionId],
   );
   const settlement = useMemo(
     () => (gameState.status !== 'active' ? calculateFinalSettlement(gameState) : null),

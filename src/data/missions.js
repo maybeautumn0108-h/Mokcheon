@@ -73,9 +73,14 @@ export const MISSIONS = [
     positionCheckInterval: 2,
     isOneWayGoal: true,
     goalPortId: 'goodhope',
-    badgeText: '희망봉 도착 · 10턴 · 2턴 위치확인',
-    summary: '바르톨로메우 디아스의 발자취를 따라 10턴 안에 아프리카 최남단 희망봉에 도착하세요! 귀항 없이 희망봉에 닿기만 하면 위대한 항해사로 인정받습니다.',
-    rulesNote: '목표: 10턴 이내 희망봉 도착 (귀항 불필요 · 2턴마다 위치 확인)',
+    goalDockRadiusDeg: 4.5,
+    moveScale: 0.6,
+    initialFood: 135,
+    coastalSpeedScale: 0.72,
+    badgeText: '희망봉 4.5° 이내 · 10턴 · 2턴 위치확인',
+    summary:
+      '바르톨로메우 디아스의 발자취를 따라 10턴 안에 아프리카 최남단 희망봉에 도착하세요! 남대서양 역풍을 피해 서쪽 환류와 남위 30° 이남 편서풍을 타면 7~8턴 만에 도달할 수 있습니다.',
+    rulesNote: '목표: 10턴 이내 희망봉 정밀 입항(4.5°) · 이동 0.6배 · 초기 식량 135',
   },
 ];
 

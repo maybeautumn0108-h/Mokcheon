@@ -871,11 +871,44 @@ test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-wa
     }
   }
   assert.equal(aiCape.status, 'returned');
-  assert.ok(aiCape.aiConfig.state.turn <= 10);
+  assert.ok(aiCape.aiConfig.state.turn >= 6 && aiCape.aiConfig.state.turn <= 9, `Expected Lv.4 AI 6~9 turns, got ${aiCape.aiConfig.state.turn}`);
   assert.equal(
     evaluateMissionProgress(aiCape.aiConfig.state, 'mission_event_cape').goalAchieved,
     true,
   );
+
+  // Verify 7~10 turn balance curve: optimal (~7 turns), 1-mistake recovery (<= 10 turns), naive direct fails
+  const runCapeStrategy = (wps, isMistakeTurn1 = false, isNaive = false) => {
+    let s = createInitialGameState('mission_event_cape');
+    let wpIdx = 0;
+    for (let t = 1; t <= 10; t++) {
+      if (s.status !== 'active') break;
+      while (wpIdx < wps.length - 1 && b4EuclideanDeg(s.lat, s.lon, wps[wpIdx].lat, wps[wpIdx].lon) <= 10) {
+        wpIdx++;
+      }
+      const tgt = wps[wpIdx];
+      let h = Math.round(((Math.atan2(tgt.lon - s.lon, tgt.lat - s.lat) * 180) / Math.PI + 360) % 360);
+      const w0 = evaluateWind(h, s.lat, s.lon, t, false);
+      let full = !isNaive && (isMistakeTurn1 ? t >= 3 && w0.windClass.id === 'tailwind' : (w0.windClass.id === 'tailwind' || w0.windClass.id === 'reach'));
+      if (isMistakeTurn1 && t === 1) {
+        h = 135;
+        full = false;
+      }
+      const res = executeSailTurn({ ...s, headingDeg: h, isFullSail: full }, () => 0.9);
+      s = { ...res.nextState, turnStep: 'sail' };
+    }
+    return s;
+  };
+  const optRes = runCapeStrategy([{ lat: 20, lon: -26 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }]);
+  assert.equal(optRes.status, 'returned');
+  assert.ok(optRes.turn <= 8, `Expected optimal route <= 8 turns, got ${optRes.turn}`);
+
+  const mistRes = runCapeStrategy([{ lat: 15, lon: -26 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }], true);
+  assert.equal(mistRes.status, 'returned');
+  assert.ok(mistRes.turn >= 9 && mistRes.turn <= 10, `Expected 1-mistake route 9~10 turns, got ${mistRes.turn}`);
+
+  const naiveRes = runCapeStrategy([{ lat: -34.5, lon: 18.5 }], false, true);
+  assert.notEqual(naiveRes.status, 'returned');
 });
 
 test('20. 3-segment island bypass resumes original heading after Taiwan, and small-island ports stop on entry then depart freely', () => {
