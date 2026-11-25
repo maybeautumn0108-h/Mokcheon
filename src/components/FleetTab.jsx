@@ -1,18 +1,12 @@
 import React, { useState } from 'react';
 import {
-  CheckCircle2,
-  Clock,
   Lock,
   LogOut,
   Monitor,
-  Radio,
-  Ship,
-  Users,
+  Settings,
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { isFleetOffline } from '../engine/fleetSync.js';
-import { getMissionById } from '../data/missions.js';
 
 const TEACHER_PIN = (import.meta.env?.VITE_TEACHER_PIN || '1492').trim();
 
@@ -25,9 +19,6 @@ export default function FleetTab({
   onChangeTeamName,
   showDemoRivals,
   onToggleDemoRivals,
-  allFleets,
-  nearbyFleets,
-  myClientId,
   isOnlineSync,
   onLeaveToLobby,
   onOpenTeacherMode,
@@ -51,10 +42,10 @@ export default function FleetTab({
   return (
     <div className="space-y-3">
       {/* Room & Team Setup */}
-      <section className="rounded-2xl border border-amber-500/25 bg-slate-900/95 p-3.5 shadow-lg space-y-2.5">
+      <section className="rounded-2xl border border-amber-500/25 bg-slate-900/95 p-3.5 shadow-lg space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
-            <Users className="w-4 h-4" />
+            <Settings className="w-4 h-4" />
             수업방 접속 & 선단 설정
           </h2>
           <button
@@ -163,7 +154,7 @@ export default function FleetTab({
         </div>
 
         <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs cursor-pointer">
-          <span className="text-slate-300">데모 경쟁 선단(2·3조) 함께 보기</span>
+          <span className="text-slate-300">연습용 라이벌/해적 선단 활성화</span>
           <input
             type="checkbox"
             checked={showDemoRivals}
@@ -171,110 +162,6 @@ export default function FleetTab({
             className="accent-amber-500 w-4 h-4"
           />
         </label>
-      </section>
-
-      {/* Nearby Radar (<= 1.0 cm / 10°, 1 grid square) */}
-      <section className="rounded-2xl border border-sky-500/30 bg-slate-900/90 p-3.5">
-        <h3 className="text-xs font-bold text-sky-300 flex items-center gap-1.5 mb-2">
-          <Radio className="w-4 h-4" />
-          근접 선단 레이더 (반경 1.0 cm / 격자 1칸 이내)
-        </h3>
-        {nearbyFleets.length === 0 ? (
-          <div className="text-xs text-slate-400">
-            현재 반경 1.0 cm(10°) 이내에 포착된 다른 선단이 없습니다.
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {nearbyFleets.map((peer) => (
-              <div
-                key={peer.clientId}
-                className="flex items-center justify-between rounded-xl border border-sky-500/35 bg-sky-950/40 px-3 py-2 text-xs"
-              >
-                <span className="font-bold text-sky-200">{peer.teamName}</span>
-                <span className="text-sky-300 font-semibold tabular-nums">
-                  {peer.sectorLabel} · {peer.distCm.toFixed(1)} cm
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Live Class Race Feed (No coordinates leaked to students!) */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5">
-        <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5 mb-2.5">
-          <Ship className="w-4 h-4 text-amber-400" />
-          학급 전체 선단 레이스 피드 ({allFleets.length}척)
-        </h3>
-        <div className="space-y-2">
-          {allFleets.map((fleet) => {
-            const isMe = fleet.clientId === myClientId;
-            const currentTurn = roomMeta?.currentTurn ?? 1;
-            const missionMaxTurns = getMissionById(roomMeta?.missionId).maxTurns;
-            const turnPhase = roomMeta?.turnPhase ?? 'sail_card';
-            const offline = !fleet.isDemo && isFleetOffline(fleet);
-            const isDone =
-              fleet.status !== 'active' ||
-              (turnPhase === 'sail_card'
-                ? (fleet.cardCompletedTurn ?? 0) >= currentTurn ||
-                  (fleet.completedTurn ?? 0) >= currentTurn
-                : (fleet.completedTurn ?? 0) >= currentTurn);
-            return (
-              <div
-                key={fleet.clientId}
-                className={`rounded-xl border px-3 py-2 text-xs ${
-                  offline
-                    ? 'border-slate-800/60 bg-slate-950/35 opacity-55'
-                    : isMe
-                      ? 'border-amber-400/50 bg-amber-500/10'
-                      : 'border-slate-800 bg-slate-950/60'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-black text-slate-100">
-                    {fleet.teamName} {isMe && <span className="text-amber-300">(나)</span>}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {playMode === 'online' && !fleet.isDemo && (
-                      <span
-                        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                          offline
-                            ? 'bg-rose-500/20 text-rose-300'
-                            : isDone
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-amber-500/20 text-amber-300'
-                        }`}
-                      >
-                        {offline ? (
-                          '이탈'
-                        ) : isDone ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3" />
-                            {turnPhase === 'sail_card' ? '카드완료' : '턴완료'}
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="w-3 h-3" />
-                            진행중
-                          </>
-                        )}
-                      </span>
-                    )}
-                    <span className="text-[11px] font-bold text-amber-300 tabular-nums">
-                      {Math.min(missionMaxTurns, fleet.turn)}/{missionMaxTurns}턴 · {fleet.gold}G
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                  <span>{fleet.lastEvent || '항해 중'}</span>
-                  <span className="tabular-nums">
-                    특산품 {fleet.cargoCount || 0}종 · 식량 {fleet.food}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </section>
     </div>
   );

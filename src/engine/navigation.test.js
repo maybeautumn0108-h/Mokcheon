@@ -943,13 +943,10 @@ test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldru
       }
       const tgt = wps[wpIdx];
       let h = Math.round(((Math.atan2(tgt.lon - s.lon, tgt.lat - s.lat) * 180) / Math.PI + 360) % 360);
-      const w0 = evaluateWind(h, s.lat, s.lon, t, false);
-      let full = forceDoldrums || (isMistakeTurn1 ? t >= 3 && w0.windClass.id === 'tailwind' : (w0.windClass.id === 'tailwind' || w0.windClass.id === 'reach'));
       if (isMistakeTurn1 && t === 1) {
         h = 135;
-        full = false;
       }
-      const res = executeSailTurn({ ...s, headingDeg: h, isFullSail: full }, () => 0.9);
+      const res = executeSailTurn({ ...s, headingDeg: h, isFullSail: false }, () => 0.9);
       s = { ...res.nextState, turnStep: 'activity' };
       if (dockResupply && s.status === 'active') {
         const ep = enterPortInActivity(s);

@@ -76,7 +76,7 @@ export const AI_LEVELS = [
     level: 2,
     label: '2단계 · 견습',
     shortLabel: 'Lv.2 견습',
-    desc: '목표 지점으로 직선 항해하려다 대륙에 자주 막히며 전속 항해를 거의 쓰지 않습니다.',
+    desc: '목표 지점으로 직선 항해하려다 대륙에 자주 막히며 우회 판단이 서툽니다.',
   },
   {
     level: 3,
@@ -88,7 +88,7 @@ export const AI_LEVELS = [
     level: 4,
     label: '4단계 · 마스터',
     shortLabel: 'Lv.4 마스터',
-    desc: '매 턴 해안선·바람·전속·보급·특산품을 계산해 최단 턴·최고 점수를 노립니다.',
+    desc: '매 턴 해안선·바람·보급·특산품을 계산해 최단 턴·최고 점수를 노립니다.',
   },
 ];
 
@@ -320,7 +320,7 @@ export function chooseAiSailDecision(
     }
     return {
       headingDeg: heading,
-      isFullSail: state.food >= 80 && rng() < 0.15,
+      isFullSail: false,
       waypointIndex,
     };
   }
@@ -348,7 +348,6 @@ export function chooseAiSailDecision(
   if (level === 3) {
     let bestScore = -Infinity;
     let bestHeading = directBearing;
-    let bestFullSail = false;
 
     for (const offset of [0, -25, 25, -50, 50, -80, 80, 120, -120]) {
       const h = normalizeDeg(directBearing + offset);
@@ -367,71 +366,54 @@ export function chooseAiSailDecision(
       if (score > bestScore) {
         bestScore = score;
         bestHeading = h;
-        bestFullSail =
-          planned.windClass.id === 'tailwind' &&
-          state.food >= 85 &&
-          nextDist > 25 &&
-          rng() < 0.4;
       }
     }
 
     return {
       headingDeg: bestHeading,
-      isFullSail: bestFullSail,
+      isFullSail: false,
       waypointIndex: idx,
     };
   }
 
-  // Level 4: Full 360° simulation + wind/full-sail optimization
+  // Level 4: Full 360° simulation + wind/coastline optimization
   let bestScore = -Infinity;
   let bestHeading = directBearing;
-  let bestFullSail = false;
-  const missionMax = getMissionById(missionId).maxTurns;
-  const turnsLeft = Math.max(1, missionMax - state.turn + 1);
-  const allowFullSail = state.food >= 50 || turnsLeft <= 7;
 
   for (let h = 0; h < 360; h += 10) {
-    for (const fs of allowFullSail ? [false, true] : [false]) {
-      const cand = { ...state, headingDeg: h, isFullSail: fs };
-      const planned = computePlannedMove(cand);
-      const move = resolveMovement(state.lat, state.lon, h, planned.effectiveDeg);
-      const dockedHere = findNearbyPort(move.endLat, move.endLon);
-      const distAfter = b4EuclideanDeg(move.endLat, move.endLon, navTarget.lat, navTarget.lon);
-      const intendedDock = Boolean(navTarget.portId && dockedHere?.id === navTarget.portId);
+    const cand = { ...state, headingDeg: h, isFullSail: false };
+    const planned = computePlannedMove(cand);
+    const move = resolveMovement(state.lat, state.lon, h, planned.effectiveDeg);
+    const dockedHere = findNearbyPort(move.endLat, move.endLon);
+    const distAfter = b4EuclideanDeg(move.endLat, move.endLon, navTarget.lat, navTarget.lon);
+    const intendedDock = Boolean(navTarget.portId && dockedHere?.id === navTarget.portId);
 
-      let score = -distAfter;
-      if (move.actualDeg < 1.5 && !intendedDock) {
-        // Strictly reject getting pinned against coastline
-        score -= 500;
-      } else if (move.collided && !intendedDock) {
-        // Strongly avoid wasting movement / risking native ambushes
-        score -= 120;
-      }
-      if (move.hitBoundary) score -= 250;
-      if (intendedDock) {
-        score += 40;
-      } else if (dockedHere && (state.turnsWithoutPort >= 4 || state.food < 105)) {
-        // Opportunistic free mid-route resupply if naturally passing a port
-        score += 8;
-      }
-      // Use full sail when it materially accelerates waypoint arrival without endangering food
-      if (fs) {
-        const gainBonus = planned.effectiveCm >= 4.0 ? 4.5 : -2.5;
-        score += gainBonus - (state.food < 65 ? 5.0 : 0);
-      }
-      score -= smallestAngleDiff(h, directBearing) * 0.01;
+    let score = -distAfter;
+    if (move.actualDeg < 1.5 && !intendedDock) {
+      // Strictly reject getting pinned against coastline
+      score -= 500;
+    } else if (move.collided && !intendedDock) {
+      // Strongly avoid wasting movement / risking native ambushes
+      score -= 120;
+    }
+    if (move.hitBoundary) score -= 250;
+    if (intendedDock) {
+      score += 40;
+    } else if (dockedHere && (state.turnsWithoutPort >= 4 || state.food < 105)) {
+      // Opportunistic free mid-route resupply if naturally passing a port
+      score += 8;
+    }
+    score -= smallestAngleDiff(h, directBearing) * 0.01;
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestHeading = h;
-        bestFullSail = fs;
-      }
+    if (score > bestScore) {
+      bestScore = score;
+      bestHeading = h;
     }
   }
 
   return {
     headingDeg: bestHeading,
-    isFullSail: bestFullSail,
+    isFullSail: false,
     waypointIndex: idx,
   };
 }

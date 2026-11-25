@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Wind, Zap } from 'lucide-react';
+import { Wind } from 'lucide-react';
 import { normalizeDeg } from '../data/windZones.js';
 
 function getCardinalLabel(deg) {
@@ -36,8 +36,6 @@ export default function HelmWheel({
   headingDeg,
   onChangeHeading,
   windEval,
-  isFullSail,
-  onToggleFullSail,
   disabled,
 }) {
   const wheelRef = useRef(null);
@@ -276,28 +274,6 @@ export default function HelmWheel({
           </button>
         ))}
       </div>
-
-      {/* Full Sail Toggle */}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onToggleFullSail}
-        className={`mt-2.5 w-full flex items-center justify-between rounded-xl border px-3 py-2 text-xs transition cursor-pointer ${
-          isFullSail
-            ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
-            : 'bg-slate-800/60 border-slate-700/80 text-slate-300 hover:border-slate-600'
-        }`}
-      >
-        <span className="inline-flex items-center gap-1.5 font-bold">
-          <Zap className={`w-4 h-4 ${isFullSail ? 'text-amber-400' : 'text-slate-400'}`} />
-          전속 항해 (+1.0 cm 추가 전진)
-        </span>
-        <span className="text-[11px] font-medium opacity-90">
-          {isFullSail
-            ? `활성화됨 · 식량 -${windEval.fullSailFoodCost ?? 15}`
-            : `끄기 · 일반 -${windEval.normalFoodCost ?? 10}`}
-        </span>
-      </button>
     </section>
   );
 }

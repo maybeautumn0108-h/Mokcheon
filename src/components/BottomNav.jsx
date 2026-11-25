@@ -1,11 +1,11 @@
 import React from 'react';
-import { Compass, Eye, ScrollText, Users } from 'lucide-react';
+import { Compass, Eye, Settings, ShoppingBag } from 'lucide-react';
 
 const TABS = [
   { id: 'helm', label: '조타실', icon: Compass },
   { id: 'quadrant', label: '사분의', icon: Eye },
-  { id: 'log', label: '교역·일지', icon: ScrollText },
-  { id: 'fleet', label: '선단 현황', icon: Users },
+  { id: 'log', label: '교역소', icon: ShoppingBag },
+  { id: 'fleet', label: '설정', icon: Settings },
 ];
 
 export default function BottomNav({ activeTab, onSelectTab, highlightTradeShop = false }) {

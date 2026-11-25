@@ -1,5 +1,5 @@
 import React from 'react';
-import { Anchor, CheckCircle2, Circle, Coins, Droplets, Flag, HeartPulse, Package, ScrollText, ShoppingBag } from 'lucide-react';
+import { Anchor, CheckCircle2, Circle, Coins, Droplets, Flag, HeartPulse, Package, ShoppingBag } from 'lucide-react';
 import { REPAIR_AMOUNT, REPAIR_COST, RESUPPLY_COST, getPortById } from '../data/ports.js';
 import { evaluateMissionProgress, getMissionById } from '../data/missions.js';
 import { MAX_FOOD } from '../engine/navigation.js';
@@ -66,7 +66,7 @@ export default function TradeLogTab({
           <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs text-slate-400 flex items-center gap-2">
             <Anchor className="w-4 h-4 text-slate-500 shrink-0" />
             <span>
-              현재 항해 중입니다. 기항지 반경 내에서 조타실의 <strong>[기항지 정박]</strong>을 누르면
+              현재 항해 중입니다. 기항지 반경 내에서 3단계의 <strong>[기항지 입항]</strong>을 누르면
               보급·수리 및 특산품 매입이 활성화됩니다.
             </span>
           </div>
@@ -192,42 +192,6 @@ export default function TradeLogTab({
             ))}
           </div>
         )}
-      </section>
-
-      {/* Voyage Log */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5">
-        <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5 mb-2.5">
-          <ScrollText className="w-4 h-4 text-sky-400" />
-          항해 일지 (최근 기록순)
-        </h3>
-
-        <div className="space-y-2">
-          {state.logs.map((entry, idx) => (
-            <div
-              key={`${entry.turn}-${idx}`}
-              className={`rounded-xl border px-3 py-2 text-xs ${
-                entry.type === 'collision'
-                  ? 'border-rose-500/35 bg-rose-950/30 text-rose-100'
-                  : entry.type === 'dock'
-                    ? 'border-emerald-500/35 bg-emerald-950/30 text-emerald-100'
-                    : entry.type === 'card'
-                      ? 'border-amber-500/35 bg-amber-950/25 text-amber-100'
-                      : entry.type === 'trade'
-                        ? 'border-violet-500/35 bg-violet-950/25 text-violet-100'
-                        : 'border-slate-800 bg-slate-950/60 text-slate-200'
-              }`}
-            >
-              <div className="flex items-center justify-between text-[11px] opacity-80 mb-0.5">
-                <span className="font-bold">
-                  {entry.turn === 0 ? '출항 준비' : `제${entry.turn}턴`}
-                </span>
-                <span>{entry.dateLabel}</span>
-              </div>
-              <div className="font-bold">{entry.title}</div>
-              <div className="text-[11px] text-slate-300/90 mt-0.5">{entry.detail}</div>
-            </div>
-          ))}
-        </div>
       </section>
     </div>
   );

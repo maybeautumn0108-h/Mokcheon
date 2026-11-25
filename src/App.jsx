@@ -960,7 +960,10 @@ export default function App() {
     [allFleets, clientId, nowTick],
   );
 
-  const windEval = useMemo(() => computePlannedMove(gameState), [gameState]);
+  const windEval = useMemo(
+    () => computePlannedMove({ ...gameState, isFullSail: false }),
+    [gameState],
+  );
 
   const nearbyFleets = useMemo(
     () =>
@@ -1471,7 +1474,7 @@ export default function App() {
     setIsSailing(true);
     sailTimerRef.current = setTimeout(() => {
       setGameState((prev) => {
-        const { nextState, outcome } = executeSailTurn(prev);
+        const { nextState, outcome } = executeSailTurn({ ...prev, isFullSail: false });
         setTurnOutcome(outcome);
         return nextState;
       });
@@ -2183,10 +2186,6 @@ export default function App() {
                       setGameState((prev) => ({ ...prev, headingDeg }))
                     }
                     windEval={windEval}
-                    isFullSail={gameState.isFullSail}
-                    onToggleFullSail={() =>
-                      setGameState((prev) => ({ ...prev, isFullSail: !prev.isFullSail }))
-                    }
                     disabled={!canSail}
                   />
 
