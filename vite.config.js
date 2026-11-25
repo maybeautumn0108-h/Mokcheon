@@ -8,10 +8,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'supabase-vendor': ['@supabase/supabase-js'],
-          'lucide-vendor': ['lucide-react'],
+        manualChunks(id) {
+          if (id.includes('@supabase')) return 'supabase-vendor';
         },
       },
     },
