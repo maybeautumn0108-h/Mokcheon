@@ -189,6 +189,10 @@ export function computePlannedMove(state) {
   const minDeg = windEval.isDoldrums && mission.doldrumsMoveScale ? 3.0 : mission.moveScale ? 3.5 : 5.0;
   effectiveDeg = Math.max(minDeg, Number(effectiveDeg.toFixed(1)));
   const effectiveCm = Number((effectiveDeg / degPerCm).toFixed(1));
+  const normalFoodCost = mission.foodCostPerTurn ?? NORMAL_SAIL_FOOD_COST;
+  const fullSailFoodCost =
+    mission.fullSailFoodCostPerTurn ??
+    (mission.foodCostPerTurn ? normalFoodCost + 5 : FULL_SAIL_FOOD_COST);
 
   return {
     ...windEval,
@@ -196,6 +200,8 @@ export function computePlannedMove(state) {
     chartSizeLabel: mission.chartSizeLabel || 'B4',
     effectiveCm,
     effectiveDeg,
+    normalFoodCost,
+    fullSailFoodCost,
   };
 }
 
@@ -821,7 +827,9 @@ export function executeSailTurn(state, rng = Math.random) {
   const nextTurnsWithoutPort = state.turnsWithoutPort + 1;
   const nextIsSpoiled = nextTurnsWithoutPort >= SPOILAGE_THRESHOLD_TURNS;
 
-  const baseFoodCost = state.isFullSail ? FULL_SAIL_FOOD_COST : NORMAL_SAIL_FOOD_COST;
+  const baseFoodCost = state.isFullSail
+    ? planned.fullSailFoodCost
+    : planned.normalFoodCost;
   const foodCost = Math.round(baseFoodCost * (nextIsSpoiled ? 1.5 : 1.0));
   const afterSailFood = Math.max(0, state.food - foodCost);
 
@@ -1333,27 +1341,40 @@ export function sellCargoItem(state, index) {
 }
 
 /**
- * Final Settlement Calculator matching SPEC §6.
+ * Final Settlement Grade Calculator.
+ * - Any failure to reach the goal (stranded/sunk/timeup/incomplete) => 'F'
+ * - 15-turn event mission (mission_event_cape): <=8 turns 'S', 9 'A', 10~11 'B', >=12 'C'
+ * - Standard 30~40 turn round-trip missions: scored strictly on goal + totalScore
  */
-export function computeVoyageGrade({ outcomeType, mission, missionProgress, totalScore }) {
-  if (outcomeType === 'disaster') {
-    return { grade: 'D', gradeTitle: '재도전 항해단' };
+export function computeVoyageGrade({
+  outcomeType,
+  mission,
+  missionProgress,
+  totalScore,
+  turnsTaken = 1,
+}) {
+  const goalAchieved = outcomeType === 'returned' && Boolean(missionProgress?.goalAchieved);
+  if (!goalAchieved) {
+    return { grade: 'F', gradeTitle: '도착 실패' };
   }
-  if (outcomeType === 'open_sea_timeup') {
+
+  if (mission?.isOneWayGoal || (mission?.maxTurns ?? 30) <= 15) {
+    if (turnsTaken <= 8) return { grade: 'S', gradeTitle: '전설의 항해왕' };
+    if (turnsTaken === 9) return { grade: 'A', gradeTitle: '일등 항해사' };
+    if (turnsTaken <= 11) return { grade: 'B', gradeTitle: '숙련 항해사' };
     return { grade: 'C', gradeTitle: '도전 항해사' };
   }
-  if (outcomeType === 'overseas_docked') {
-    return { grade: 'B', gradeTitle: '숙련 항해사' };
-  }
-  const goalAchieved = Boolean(missionProgress?.goalAchieved);
-  const sThreshold = mission?.isOneWayGoal ? 850 : 1100;
-  if (goalAchieved && totalScore >= sThreshold) {
+
+  if (totalScore >= 1300) {
     return { grade: 'S', gradeTitle: '전설의 항해왕' };
   }
-  if (goalAchieved || totalScore >= 950) {
+  if (totalScore >= 1000) {
     return { grade: 'A', gradeTitle: '일등 항해사' };
   }
-  return { grade: 'B', gradeTitle: '숙련 항해사' };
+  if (totalScore >= 750) {
+    return { grade: 'B', gradeTitle: '숙련 항해사' };
+  }
+  return { grade: 'C', gradeTitle: '도전 항해사' };
 }
 
 /**
@@ -1363,6 +1384,7 @@ export function calculateFinalSettlement(state) {
   const mission = getMissionById(state.missionId);
   const missionProgress = evaluateMissionProgress(state, mission.id);
   const visitedMaluku = missionProgress.visitedMaluku;
+  const turnsTaken = state.completedTurn || state.activeTurn || state.turn || 1;
 
   const cargoBreakdown = state.cargo.map((item) => {
     let appliedMultiplier = 0;
@@ -1378,7 +1400,13 @@ export function calculateFinalSettlement(state) {
   const cargoTotal = cargoBreakdown.reduce((sum, item) => sum + item.payout, 0);
 
   if (state.status === 'stranded' || state.status === 'sunk') {
-    const gradeMeta = computeVoyageGrade({ outcomeType: 'disaster', mission, missionProgress, totalScore: 0 });
+    const gradeMeta = computeVoyageGrade({
+      outcomeType: 'disaster',
+      mission,
+      missionProgress,
+      totalScore: 0,
+      turnsTaken,
+    });
     return {
       outcomeType: 'disaster',
       mission,
@@ -1388,6 +1416,7 @@ export function calculateFinalSettlement(state) {
       resourceBonus: 0,
       missionBonus: 0,
       totalScore: 0,
+      turnsTaken,
       visitedMaluku,
       cargoBreakdown,
       rankLabel: '조난 / 난파',
@@ -1396,7 +1425,13 @@ export function calculateFinalSettlement(state) {
   }
 
   if (state.status === 'timeup' && !state.isDocked) {
-    const gradeMeta = computeVoyageGrade({ outcomeType: 'open_sea_timeup', mission, missionProgress, totalScore: 0 });
+    const gradeMeta = computeVoyageGrade({
+      outcomeType: 'open_sea_timeup',
+      mission,
+      missionProgress,
+      totalScore: 0,
+      turnsTaken,
+    });
     return {
       outcomeType: 'open_sea_timeup',
       mission,
@@ -1406,16 +1441,23 @@ export function calculateFinalSettlement(state) {
       resourceBonus: 0,
       missionBonus: 0,
       totalScore: 0,
+      turnsTaken,
       visitedMaluku,
       cargoBreakdown,
-      rankLabel: '망망대해 기한 종료 (조난 처리)',
+      rankLabel: '망망대해 기한 종료 (도착 실패)',
       ...gradeMeta,
     };
   }
 
   if (state.status === 'timeup' && state.isDocked) {
     const totalScore = state.gold + cargoTotal;
-    const gradeMeta = computeVoyageGrade({ outcomeType: 'overseas_docked', mission, missionProgress, totalScore });
+    const gradeMeta = computeVoyageGrade({
+      outcomeType: 'overseas_docked',
+      mission,
+      missionProgress,
+      totalScore,
+      turnsTaken,
+    });
     return {
       outcomeType: 'overseas_docked',
       mission,
@@ -1425,9 +1467,10 @@ export function calculateFinalSettlement(state) {
       resourceBonus: 0,
       missionBonus: 0,
       totalScore,
+      turnsTaken,
       visitedMaluku,
       cargoBreakdown,
-      rankLabel: '해외 기항지 정박 (매입 원금 회수)',
+      rankLabel: '해외 기항지 정박 (목표 도착 실패)',
       ...gradeMeta,
     };
   }
@@ -1461,7 +1504,13 @@ export function calculateFinalSettlement(state) {
             : '무사 귀항 항해사';
   }
 
-  const gradeMeta = computeVoyageGrade({ outcomeType: 'returned', mission, missionProgress, totalScore });
+  const gradeMeta = computeVoyageGrade({
+    outcomeType: 'returned',
+    mission,
+    missionProgress,
+    totalScore,
+    turnsTaken,
+  });
   return {
     outcomeType: 'returned',
     mission,
@@ -1471,6 +1520,7 @@ export function calculateFinalSettlement(state) {
     resourceBonus,
     missionBonus,
     totalScore,
+    turnsTaken,
     visitedMaluku,
     cargoBreakdown,
     rankLabel,

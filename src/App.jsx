@@ -31,6 +31,8 @@ const InteractionModal = lazy(() => import('./components/InteractionModal.jsx'))
 const MissionBriefingModal = lazy(() => import('./components/MissionBriefingModal.jsx'));
 const VoyageTrailMap = lazy(() => import('./components/VoyageTrailMap.jsx'));
 const MissionSuccessTributeModal = lazy(() => import('./components/MissionSuccessTributeModal.jsx'));
+const PortArrivalModal = lazy(() => import('./components/PortArrivalModal.jsx'));
+const VoyageEndedView = lazy(() => import('./components/VoyageEndedView.jsx'));
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { getTurnInfo } from './data/calendar.js';
 import { evaluateMissionProgress, getMissionById } from './data/missions.js';
@@ -222,6 +224,7 @@ export default function App() {
   const [showMissionBriefing, setShowMissionBriefing] = useState(false);
   const [showPositionCheckMap, setShowPositionCheckMap] = useState(false);
   const [showSuccessTribute, setShowSuccessTribute] = useState(false);
+  const [arrivedPortModal, setArrivedPortModal] = useState(null);
 
   const sailTimerRef = useRef(null);
   const turnAnimTimerRef = useRef(null);
@@ -230,6 +233,7 @@ export default function App() {
   const prevRoomTurnRef = useRef(1);
   const prevRoomTurnPhaseRef = useRef('sail_card');
   const prevCriticalSigRef = useRef('');
+  const hasAutoOpenedEndRef = useRef(false);
   const appliedInteractionIdsRef = useRef(loadIdSet(`age_of_sail_applied_${clientId}`));
   const aiDriverLockRef = useRef(new Map());
 
@@ -522,6 +526,12 @@ export default function App() {
           setShowMissionBriefing(true);
         }
       }
+      return;
+    }
+
+    // If this player's voyage has already concluded, keep their end screen/results undisturbed
+    // even while other players or AI fleets continue remaining turns in the room.
+    if (gameState.status !== 'active') {
       return;
     }
 
@@ -1549,6 +1559,22 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (
+      gameState.status !== 'active' &&
+      !isSailing &&
+      !turnOutcome &&
+      !drawnCards
+    ) {
+      if (!hasAutoOpenedEndRef.current) {
+        hasAutoOpenedEndRef.current = true;
+        openEndGameModal(gameState);
+      }
+    } else if (gameState.status === 'active') {
+      hasAutoOpenedEndRef.current = false;
+    }
+  }, [gameState.status, isSailing, turnOutcome, drawnCards]);
+
   // Step 3: Port Visit & Finish Activity
   const handleEnterPort = () => {
     const { nextState, dockedPort } = enterPortInActivity(gameState);
@@ -1558,7 +1584,8 @@ export default function App() {
       return;
     }
     if (dockedPort) {
-      setDockToast(`${dockedPort.name} 입항 완료! 교역·일지 탭에서 보급과 특산품을 거래하세요.`);
+      setArrivedPortModal(dockedPort);
+      setDockToast(`${dockedPort.name} 입항 완료! 교역소에서 보급과 특산품을 거래하세요.`);
     }
   };
 
@@ -1941,7 +1968,7 @@ export default function App() {
             </div>
           )}
 
-          {endMeta && (
+          {endMeta && activeTab !== 'helm' && (
             <div
               className={`rounded-2xl border p-3.5 ${
                 endMeta.tone === 'emerald'
@@ -2043,20 +2070,35 @@ export default function App() {
                 </div>
               )}
 
-              <DeckView
-                lat={gameState.lat}
-                lon={gameState.lon}
-                headingDeg={gameState.headingDeg}
-                windToDeg={windEval.windToDeg}
-                isSailing={isSailing}
-                nearbyPort={nearbyPort}
-                nearbyFleets={nearbyFleets}
-                weatherId={gameState.weatherId}
-                isBlockedAhead={isBlockedAhead}
-                degPerCm={windEval?.degPerCm || 10}
-              />
+              {gameState.status !== 'active' && settlement ? (
+                <Suspense fallback={null}>
+                  <VoyageEndedView
+                    state={gameState}
+                    settlement={settlement}
+                    endMeta={endMeta}
+                    playMode={playMode}
+                    readyCount={readyCount}
+                    totalFleets={onlineRealFleets.length}
+                    onOpenSettlement={() => setShowSettlement(true)}
+                    onLeaveOrReset={playMode === 'solo' ? handleReset : handleLeaveToLobby}
+                  />
+                </Suspense>
+              ) : (
+                <>
+                  <DeckView
+                    lat={gameState.lat}
+                    lon={gameState.lon}
+                    headingDeg={gameState.headingDeg}
+                    windToDeg={windEval.windToDeg}
+                    isSailing={isSailing}
+                    nearbyPort={nearbyPort}
+                    nearbyFleets={nearbyFleets}
+                    weatherId={gameState.weatherId}
+                    isBlockedAhead={isBlockedAhead}
+                    degPerCm={windEval?.degPerCm || 10}
+                  />
 
-              {turnStep === 'activity' && gameState.status === 'active' ? (
+                  {turnStep === 'activity' ? (
                 isWaitingForActivityOpen ? (
                   <section className="rounded-2xl border border-sky-400/50 bg-sky-950/45 p-4 space-y-3 shadow-lg">
                     <div className="flex items-center justify-between gap-2">
@@ -2193,6 +2235,8 @@ export default function App() {
                   </div>
                 </>
               )}
+                </>
+              )}
             </>
           )}
 
@@ -2237,10 +2281,27 @@ export default function App() {
           </Suspense>
         </main>
 
-        <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />
+        <BottomNav
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          highlightTradeShop={gameState.status === 'active' && Boolean(gameState.isDocked || nearbyPort)}
+        />
       </div>
 
       <TurnResultModal outcome={turnOutcome} state={gameState} onClose={handleCloseTurnModal} />
+      <Suspense fallback={null}>
+        {arrivedPortModal && (
+          <PortArrivalModal
+            port={arrivedPortModal}
+            state={gameState}
+            onOpenTradeShop={() => {
+              setArrivedPortModal(null);
+              setActiveTab('log');
+            }}
+            onClose={() => setArrivedPortModal(null)}
+          />
+        )}
+      </Suspense>
       {drawnCards && (
         <SituationCardModal
           key={`cards-turn-${gameState.turn}`}

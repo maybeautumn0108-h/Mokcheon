@@ -298,7 +298,7 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
               <div className="flex items-start gap-1.5">
                 <Anchor className="w-3.5 h-3.5 text-[#7a4b1e] shrink-0 mt-0.5" />
                 <span>
-                  <strong>2. 보급·부패 주의:</strong> 식량·식수 <strong>{mission.initialFood || 140}</strong>으로 시작하며(턴당 기본 -10), <strong>8턴</strong> 연속 미기항 시 부패(1.5배 소모)하니 중간 기항지를 활용하세요!
+                  <strong>2. 보급·부패 주의:</strong> 식량·식수 <strong>{mission.initialFood || 140}</strong>으로 시작하며(턴당 기본 -{mission.foodCostPerTurn || 10}), <strong>8턴</strong> 연속 미기항 시 부패(1.5배 소모)하니 중간 기항지를 활용하세요!
                 </span>
               </div>
             </div>

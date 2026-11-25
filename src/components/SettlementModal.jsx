@@ -224,7 +224,7 @@ export default function SettlementModal({
                 <div className="rounded-lg border border-slate-800 bg-slate-900/90 px-2 py-1.5">
                   <div className="text-[10px] text-slate-400">항해 턴</div>
                   <div className="font-black text-emerald-300 tabular-nums">
-                    {state.turn}/{settlement.mission?.maxTurns ?? 30}턴
+                    {settlement.turnsTaken ?? state.turn}/{settlement.mission?.maxTurns ?? 30}턴
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-900/90 px-2 py-1.5">

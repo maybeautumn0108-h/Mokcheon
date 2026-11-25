@@ -78,6 +78,8 @@ export const MISSIONS = [
     doldrumsMoveScale: 0.45,
     strictWindFullSail: true,
     initialFood: 140,
+    foodCostPerTurn: 15,
+    fullSailFoodCostPerTurn: 20,
     coastalSpeedScale: 0.72,
     chartDegPerCm: 5,
     chartSizeLabel: 'A4',

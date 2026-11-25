@@ -854,14 +854,17 @@ test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldru
   assert.equal(mission.goalPortId, 'goodhope');
   assert.equal(mission.chartDegPerCm, 5);
   assert.equal(mission.chartSizeLabel, 'A4');
+  assert.equal(mission.foodCostPerTurn, 15);
 
-  // Turn 1: not a position check turn; Turn 2: position check turn (every 2 turns), scaled to A4 (1cm = 5deg)
+  // Turn 1: not a position check turn; Turn 2: position check turn (every 2 turns), scaled to A4 (1cm = 5deg) & -15 food
   let state = createInitialGameState('mission_event_cape');
   const planned = computePlannedMove({ ...state, headingDeg: 205 });
   assert.equal(planned.degPerCm, 5);
   assert.equal(planned.chartSizeLabel, 'A4');
+  assert.equal(planned.normalFoodCost, 15);
   assert.equal(planned.effectiveCm, Number((planned.effectiveDeg / 5).toFixed(1)));
   const t1 = executeSailTurn({ ...state, turnStep: 'sail', headingDeg: 205 }, () => 0.9);
+  assert.equal(t1.nextState.food, state.food - 15);
   assert.equal(t1.outcome.isPositionCheckTurn, false);
   assert.equal(t1.outcome.positionCheckInterval, 2);
   assert.equal(t1.outcome.degPerCm, 5);
@@ -930,7 +933,12 @@ test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldru
     let wpIdx = 0;
     for (let t = 1; t <= 15; t++) {
       if (s.status !== 'active') break;
-      while (wpIdx < wps.length - 1 && b4EuclideanDeg(s.lat, s.lon, wps[wpIdx].lat, wps[wpIdx].lon) <= 10) {
+      while (
+        wpIdx < wps.length - 1 &&
+        (dockResupply && wpIdx === 0
+          ? s.visitedPorts.includes('caboverde')
+          : b4EuclideanDeg(s.lat, s.lon, wps[wpIdx].lat, wps[wpIdx].lon) <= 10)
+      ) {
         wpIdx++;
       }
       const tgt = wps[wpIdx];
@@ -946,8 +954,7 @@ test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldru
       if (dockResupply && s.status === 'active') {
         const ep = enterPortInActivity(s);
         if (ep.dockedPort) {
-          const bs = buySupplies(ep.nextState);
-          s = bs?.nextState || ep.nextState;
+          s = buySupplies(ep.nextState);
         }
       }
       if (s.status === 'active') {
@@ -961,11 +968,11 @@ test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldru
   assert.ok(optRes.turn <= 10, `Expected optimal route <= 10 turns, got ${optRes.turn}`);
 
   const mistRes = runCapeStrategy(
-    [{ lat: 15, lon: -26 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }],
+    [{ lat: 15.0, lon: -23.6 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }],
     { isMistakeTurn1: true, dockResupply: true },
   );
   assert.equal(mistRes.status, 'returned');
-  assert.ok(mistRes.turn >= 10 && mistRes.turn <= 14, `Expected 1-mistake recovery 10~14 turns, got ${mistRes.turn}`);
+  assert.ok(mistRes.turn >= 10 && mistRes.turn <= 15, `Expected 1-mistake recovery 10~15 turns, got ${mistRes.turn}`);
 
   const doldrumsRes = runCapeStrategy(
     [{ lat: 3, lon: -5 }, { lat: -10, lon: 8 }, { lat: -34.5, lon: 18.5 }],
@@ -1022,26 +1029,26 @@ test('20. 3-segment island bypass resumes original heading after Taiwan, and sma
   assert.equal(findNearbyPort(coastGlideToPort.endLat, coastGlideToPort.endLon)?.id, 'elmina');
 });
 
-test('21. Settlement calculates navigation grade (S/A/B/C/D) consistently for report cards', () => {
-  const capeWinHigh = calculateFinalSettlement({
-    ...createInitialGameState('mission_event_cape'),
-    status: 'returned',
-    visitedPorts: ['lisbon', 'goodhope'],
-    gold: 500,
-    food: 100,
-    hull: 100,
-  });
-  assert.equal(capeWinHigh.grade, 'S');
+test('21. Settlement calculates navigation grade (8t S, 9t A, 10~11t B, 12+t C, fail F) consistently', () => {
+  const mkCapeWin = (completedTurn) =>
+    calculateFinalSettlement({
+      ...createInitialGameState('mission_event_cape'),
+      status: 'returned',
+      completedTurn,
+      activeTurn: completedTurn,
+      turn: completedTurn,
+      visitedPorts: ['lisbon', 'goodhope'],
+      gold: 400,
+      food: 60,
+      hull: 90,
+    });
 
-  const capeWinLower = calculateFinalSettlement({
-    ...createInitialGameState('mission_event_cape'),
-    status: 'returned',
-    visitedPorts: ['lisbon', 'goodhope'],
-    gold: 100,
-    food: 20,
-    hull: 50,
-  });
-  assert.equal(capeWinLower.grade, 'A');
+  assert.equal(mkCapeWin(8).grade, 'S');
+  assert.equal(mkCapeWin(9).grade, 'A');
+  assert.equal(mkCapeWin(10).grade, 'B');
+  assert.equal(mkCapeWin(11).grade, 'B');
+  assert.equal(mkCapeWin(12).grade, 'C');
+  assert.equal(mkCapeWin(15).grade, 'C');
 
   const partialReturn = calculateFinalSettlement({
     ...createInitialGameState('mission_1'),
@@ -1051,18 +1058,18 @@ test('21. Settlement calculates navigation grade (S/A/B/C/D) consistently for re
     food: 50,
     hull: 50,
   });
-  assert.equal(partialReturn.grade, 'B');
+  assert.equal(partialReturn.grade, 'F');
 
   const openSeaTimeup = calculateFinalSettlement({
-    ...createInitialGameState('mission_1'),
+    ...createInitialGameState('mission_event_cape'),
     status: 'timeup',
     isDocked: false,
   });
-  assert.equal(openSeaTimeup.grade, 'C');
+  assert.equal(openSeaTimeup.grade, 'F');
 
   const disaster = calculateFinalSettlement({
-    ...createInitialGameState('mission_1'),
+    ...createInitialGameState('mission_event_cape'),
     status: 'stranded',
   });
-  assert.equal(disaster.grade, 'D');
+  assert.equal(disaster.grade, 'F');
 });

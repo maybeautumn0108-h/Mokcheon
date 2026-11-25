@@ -277,7 +277,7 @@ export function renderVoyageReportCanvas({ settlement, state, teamName }) {
     { label: '최종 점수', value: `${settlement?.totalScore ?? 0}점`, color: '#fbbf24' },
     {
       label: '소요 턴',
-      value: `${state?.turn ?? 0} / ${settlement?.mission?.maxTurns ?? 30}턴`,
+      value: `${settlement?.turnsTaken ?? state?.turn ?? 0} / ${settlement?.mission?.maxTurns ?? 30}턴`,
       color: '#34d399',
     },
     {

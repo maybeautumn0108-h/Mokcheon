@@ -85,6 +85,34 @@ export default function TurnResultModal({ outcome, state, onClose }) {
           )}
         </div>
 
+        {/* Visual Harbor Alert when stopped inside a Port Radius */}
+        {outcome.stoppedAtPort && (
+          <div className="mt-2.5 rounded-2xl border-2 border-emerald-400/65 bg-gradient-to-r from-emerald-950/75 via-teal-950/70 to-slate-900 p-2.5 flex items-center gap-3 shadow-lg">
+            <svg viewBox="0 0 88 56" className="w-20 h-13 rounded-xl border border-emerald-400/40 bg-slate-950 shrink-0">
+              <rect width="88" height="36" fill="#0e4f68" />
+              <circle cx="68" cy="14" r="7" fill="#fde68a" opacity="0.85" />
+              <rect y="36" width="88" height="20" fill="#082f49" />
+              <rect x="0" y="34" width="38" height="6" fill="#78716c" />
+              <rect x="12" y="14" width="5" height="20" fill="#f8fafc" />
+              <rect x="12" y="19" width="5" height="5" fill="#e11d48" />
+              <circle cx="14.5" cy="12" r="2.2" fill="#fef08a" />
+              <polygon points="15,12 62,6 62,22" fill="#fef08a" opacity="0.16" />
+              <path d="M 46 34 L 50 42 L 74 42 L 79 33 Z" fill="#7c4722" />
+              <rect x="61" y="18" width="2" height="16" fill="#451a03" />
+              <polygon points="63,18 72,21 63,24" fill="#10b981" />
+            </svg>
+            <div className="min-w-0 flex-1 text-xs">
+              <div className="font-black text-emerald-300 flex items-center gap-1">
+                <Anchor className="w-3.5 h-3.5 shrink-0" />
+                <span>{outcome.stoppedAtPort.name} 기항지 반경 도착!</span>
+              </div>
+              <p className="text-[11px] text-emerald-100/90 mt-0.5 leading-snug">
+                3단계 <strong>[기항지 입항]</strong>을 누르면 교역소에서 보급·수리·특산품 거래를 할 수 있습니다.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Coastal Skirting / Port Stop / Land Stop Notice */}
         {(outcome.coastalGuided || outcome.collided || outcome.stoppedAtPort) && (
           <div

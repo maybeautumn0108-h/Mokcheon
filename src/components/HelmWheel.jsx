@@ -293,7 +293,9 @@ export default function HelmWheel({
           전속 항해 (+1.0 cm 추가 전진)
         </span>
         <span className="text-[11px] font-medium opacity-90">
-          {isFullSail ? '활성화됨 · 식량 -15' : '끄기 · 일반 -10'}
+          {isFullSail
+            ? `활성화됨 · 식량 -${windEval.fullSailFoodCost ?? 15}`
+            : `끄기 · 일반 -${windEval.normalFoodCost ?? 10}`}
         </span>
       </button>
     </section>

@@ -34,10 +34,23 @@ export default function ActivityStepPanel({
       </div>
 
       {/* Port Visit Option */}
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-3 space-y-2">
-        <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-          <Anchor className="w-4 h-4 text-emerald-400" />
-          기항지 방문
+      <div
+        className={`rounded-xl border p-3 space-y-2 transition ${
+          nearbyPort
+            ? 'border-emerald-400/70 bg-emerald-950/35 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+            : 'border-slate-800 bg-slate-950/75'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs font-black text-slate-100 flex items-center gap-1.5">
+            <Anchor className={`w-4 h-4 ${nearbyPort ? 'text-emerald-300' : 'text-emerald-400'}`} />
+            <span>기항지 방문</span>
+          </div>
+          {nearbyPort && (
+            <span className="rounded-full bg-emerald-400/20 border border-emerald-300/60 px-2 py-0.5 text-[10px] font-black text-emerald-200 animate-pulse">
+              {isDocked ? `⚓ ${nearbyPort.name} 정박 중` : `⚓ ${nearbyPort.name} 기항 가능`}
+            </span>
+          )}
         </div>
 
         {!nearbyPort ? (
@@ -45,26 +58,28 @@ export default function ActivityStepPanel({
             주변 기항지 반경에 있지 않습니다. (망망대해)
           </div>
         ) : isDocked ? (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-emerald-300 font-semibold">
-              {nearbyPort.name} 정박 중 · 교역소에서 보급·거래 가능
-            </span>
+          <div className="space-y-2">
+            <div className="text-xs text-emerald-200 font-bold">
+              {nearbyPort.name} 입항 완료! 아래 버튼을 눌러 식수·식량 보급 및 특산품을 거래하세요.
+            </div>
             <button
               type="button"
               onClick={onOpenTradeShop}
-              className="rounded-lg bg-emerald-500/20 border border-emerald-400/50 px-2.5 py-1 text-[11px] font-black text-emerald-200 hover:bg-emerald-500/30 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:brightness-110 active:scale-[0.99] py-2.5 text-xs font-black text-slate-950 shadow-[0_0_18px_rgba(16,185,129,0.45)] cursor-pointer transition"
             >
-              교역소 열기
+              <Anchor className="w-4 h-4" />
+              <span>{nearbyPort.name} 교역소 열기 (보급 · 수리 · 특산품)</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         ) : (
           <button
             type="button"
             onClick={onEnterPort}
-            className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-emerald-400/50 bg-emerald-500/20 hover:bg-emerald-500/30 py-2.5 text-xs font-black text-emerald-200 transition cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:brightness-110 active:scale-[0.99] py-3 text-xs font-black text-slate-950 shadow-[0_0_16px_rgba(16,185,129,0.35)] transition cursor-pointer"
           >
             <Anchor className="w-4 h-4" />
-            기항지 입항 · 보급 및 특산품 매입
+            <span>{nearbyPort.name} 기항지 입항 · 교역소 바로 열기</span>
           </button>
         )}
       </div>
