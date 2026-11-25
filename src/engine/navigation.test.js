@@ -658,12 +658,20 @@ test('Food cost is 10/turn, position check opens every 3 turns, and non-port lan
   assert.equal(coastLand.outcome.nativeEncounter?.isGood, true);
 });
 
-test('Ports have wider docking radius (>= 5.0°) and interaction guards prevent infinite battles or stale turn popups', () => {
+test('Ports enforce tight docking radii (2.0° small islands / 3.5~4.0° continental) and interaction guards prevent infinite battles', () => {
   for (const port of PORTS) {
-    assert.ok(port.dockRadiusDeg >= 5.0, `Port ${port.id} dockRadiusDeg should be >= 5.0`);
+    if (port.isSmallIsland) {
+      assert.equal(port.dockRadiusDeg, 2.0, `Small island ${port.id} should use tight 2.0° radius`);
+    } else {
+      assert.ok(
+        port.dockRadiusDeg >= 3.5 && port.dockRadiusDeg <= 4.0,
+        `Port ${port.id} dockRadiusDeg should be 3.5~4.0, got ${port.dockRadiusDeg}`,
+      );
+    }
   }
-  // Caboverde at (15.0, -23.6) should now be dockable from 5.5° west (-29.1)
-  assert.equal(findNearbyPort(15.0, -29.1)?.id, 'caboverde');
+  // Caboverde at (15.0, -23.6) requires approaching within 2.0°, and is NOT triggered 5.5° west (-29.1)
+  assert.equal(findNearbyPort(15.0, -25.4)?.id, 'caboverde');
+  assert.equal(findNearbyPort(15.0, -29.1), null);
 
   // Guard blocks duplicate initiation after already initiating or after a declined challenge in the same turn
   const turn3Interactions = [
