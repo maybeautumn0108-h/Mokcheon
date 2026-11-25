@@ -289,15 +289,16 @@ test('Fleet proximity radar detects peers within 1.0 cm (10°, 1 grid square) an
   assert.equal(nearby[0].sectorLabel, '정면');
 });
 
-test('Weather-driven Quadrant difficulty blocks occluded shots and tightens storm tolerance', () => {
+test('Weather-driven Quadrant difficulty blocks storm shots (no fog occlusion) and tightens storm tolerance', () => {
   const clear = getWeatherById('clear');
   const storm = getWeatherById('storm');
   assert.ok(storm.toleranceDeg < clear.toleranceDeg);
   assert.ok(storm.swayAmpX > clear.swayAmpX * 3);
-  assert.ok(storm.cloudCover > 0.9);
+  assert.equal(clear.cloudCover, 0);
+  assert.equal(storm.cloudCover, 1.0);
 
-  // Shooting while clouds occlude target fails
-  const clouded = evaluateQuadrantShot({
+  // Storm blocks Quadrant observation cleanly
+  const stormBlocked = evaluateQuadrantShot({
     trueAltitudeDeg: 38.7,
     weatherId: 'storm',
     distFromReticle: 0.5,
@@ -305,10 +306,20 @@ test('Weather-driven Quadrant difficulty blocks occluded shots and tightens stor
     swayY: 0,
     isOccluded: true,
   });
-  assert.equal(clouded.ok, false);
-  assert.equal(clouded.reason, 'cloud');
+  assert.equal(stormBlocked.ok, false);
+  assert.equal(stormBlocked.reason, 'storm');
 
-  // Shooting at 3.5° offset succeeds in clear weather (±4.8°) but misses in storm (±2.6°)
+  // Non-storm weathers never occlude sky (no fog system)
+  const squallHit = evaluateQuadrantShot({
+    trueAltitudeDeg: 38.7,
+    weatherId: 'squall',
+    distFromReticle: 1.5,
+    swayX: 1.0,
+    swayY: 0.5,
+    isOccluded: false,
+  });
+  assert.equal(squallHit.ok, true);
+
   const clearHit = evaluateQuadrantShot({
     trueAltitudeDeg: 38.7,
     weatherId: 'clear',
@@ -319,21 +330,12 @@ test('Weather-driven Quadrant difficulty blocks occluded shots and tightens stor
   });
   assert.equal(clearHit.ok, true);
 
-  const stormMiss = evaluateQuadrantShot({
-    trueAltitudeDeg: 38.7,
-    weatherId: 'storm',
-    distFromReticle: 3.5,
-    swayX: 2.0,
-    swayY: 1.5,
-    isOccluded: false,
-  });
-  assert.equal(stormMiss.ok, false);
-  assert.equal(stormMiss.reason, 'missed');
-
-  // Storm sway amplitude and occlusion over time
   const stormFrame = computeWeatherSway('storm', 1.2);
-  assert.ok(stormFrame.cloudOpacity > 0.4);
-  assert.ok(['clear', 'partly_cloudy', 'fog', 'squall', 'storm'].includes(rollWeather(-40)));
+  const squallFrame = computeWeatherSway('squall', 1.2);
+  assert.equal(stormFrame.isOccluded, true);
+  assert.equal(squallFrame.isOccluded, false);
+  assert.equal(squallFrame.cloudOpacity, 0);
+  assert.ok(['clear', 'partly_cloudy', 'squall', 'storm'].includes(rollWeather(-40)));
 });
 
 test('3-step turn flow (1. Sail -> 2. Card -> 3. Activity) tracks turnStep and completedTurn', () => {

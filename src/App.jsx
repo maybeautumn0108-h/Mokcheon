@@ -1803,7 +1803,13 @@ export default function App() {
   };
 
   const handleRecordObservation = (record) => {
-    const turnInfo = getTurnInfo(gameState.turn);
+    const activeObsTurn =
+      playMode === 'online'
+        ? roomMeta.currentTurn
+        : gameState.turnStep === 'sail' && !isWaitingForOthers
+          ? gameState.turn
+          : gameState.activeTurn || gameState.turn;
+    const turnInfo = getTurnInfo(activeObsTurn);
     const title =
       record.hemisphere === 'north'
         ? `사분의 관측: 북극성 고도 ${record.measuredDeg.toFixed(1)}°`
@@ -1815,9 +1821,11 @@ export default function App() {
 
     setGameState((prev) => ({
       ...prev,
+      quadrantLockedTurn: activeObsTurn,
+      quadrantLastRecord: record,
       logs: [
         {
-          turn: prev.turn,
+          turn: activeObsTurn,
           dateLabel: turnInfo.label,
           type: 'obs',
           title,
@@ -1826,6 +1834,19 @@ export default function App() {
         ...prev.logs,
       ],
     }));
+  };
+
+  const handleUnlockQuadrant = (cost = 5) => {
+    setGameState((prev) => {
+      if (prev.status !== 'active' || prev.food < cost) return prev;
+      const nextFood = Math.max(0, prev.food - cost);
+      return {
+        ...prev,
+        food: nextFood,
+        status: nextFood <= 0 ? 'stranded' : prev.status,
+        quadrantLockedTurn: null,
+      };
+    });
   };
 
   if (isTeacherMode) {
@@ -2243,9 +2264,16 @@ export default function App() {
             {activeTab === 'quadrant' && (
               <QuadrantTab
                 lat={gameState.lat}
-                currentTurn={gameState.turn}
+                currentTurn={displayTurn}
                 weatherId={gameState.weatherId}
+                food={gameState.food}
+                isLocked={
+                  gameState.quadrantLockedTurn === displayTurn &&
+                  Boolean(gameState.quadrantLastRecord)
+                }
+                lockedRecord={gameState.quadrantLastRecord || null}
                 onRecordObservation={handleRecordObservation}
+                onUnlockQuadrant={handleUnlockQuadrant}
               />
             )}
 

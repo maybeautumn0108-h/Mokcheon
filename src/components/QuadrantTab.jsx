@@ -5,7 +5,8 @@ import {
   CloudRain,
   Compass,
   Crosshair,
-  Eye,
+  Droplets,
+  Lock,
   Sparkles,
   Sun,
 } from 'lucide-react';
@@ -37,14 +38,21 @@ function randomSunStart(trueAlt) {
   return Math.max(5, Math.min(85, Math.round(trueAlt + dir * offset)));
 }
 
+const REMEASURE_FOOD_COST = 5;
+
 export default function QuadrantTab({
   lat,
   currentTurn,
   weatherId = 'clear',
+  food = 0,
+  isLocked = false,
+  lockedRecord = null,
   onRecordObservation,
+  onUnlockQuadrant,
 }) {
   const turnInfo = getTurnInfo(currentTurn);
   const weather = useMemo(() => getWeatherById(weatherId), [weatherId]);
+  const isStormBlocked = weather.id === 'storm';
   const target = useMemo(
     () => getCelestialTarget(lat, turnInfo.declination),
     [lat, turnInfo.declination],
@@ -58,13 +66,16 @@ export default function QuadrantTab({
   const [frameState, setFrameState] = useState(() =>
     computeWeatherSway(weatherId, 0),
   );
-  const [measurement, setMeasurement] = useState(null);
+  const [measurement, setMeasurement] = useState(() => lockedRecord);
   const [aimWarning, setAimWarning] = useState(null);
 
-  const [inputH, setInputH] = useState('');
+  const [inputH, setInputH] = useState(() =>
+    lockedRecord?.hemisphere === 'south' ? String(lockedRecord.measuredDeg) : '',
+  );
   const [inputDelta, setInputDelta] = useState(String(turnInfo.declination));
 
   const dragRef = useRef({ active: false, lastX: 0, lastY: 0 });
+  const shownMeasurement = isLocked ? lockedRecord || measurement : measurement;
 
   useEffect(() => {
     setInputDelta(String(turnInfo.declination));
@@ -72,13 +83,19 @@ export default function QuadrantTab({
 
   // Reset starting offsets on turn change so every turn requires fresh aiming
   useEffect(() => {
-    setSkyOffset(randomSkyStart());
-    setAimElevation(randomSunStart(target.trueAltitudeDeg));
+    if (!isLocked) {
+      setSkyOffset(randomSkyStart());
+      setAimElevation(randomSunStart(target.trueAltitudeDeg));
+    }
     setAimWarning(null);
-  }, [currentTurn, target.trueAltitudeDeg]);
+  }, [currentTurn, target.trueAltitudeDeg, isLocked]);
 
-  // Real-time 2-axis wave sway & cloud occlusion loop
+  // Real-time 2-axis wave sway loop (paused cleanly when locked or storm-blocked)
   useEffect(() => {
+    if (isLocked || isStormBlocked) {
+      setFrameState(computeWeatherSway(weatherId, 0));
+      return undefined;
+    }
     let rafId;
     const start = performance.now();
     const tick = (now) => {
@@ -88,9 +105,10 @@ export default function QuadrantTab({
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [weatherId]);
+  }, [weatherId, isLocked, isStormBlocked]);
 
   const handleSkyPointerDown = (e) => {
+    if (isLocked || isStormBlocked) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
   };
@@ -235,20 +253,22 @@ export default function QuadrantTab({
             </span>
             <span
               className={`rounded-full border px-2 py-0.5 ${
-                frameState.isOccluded
+                isStormBlocked
                   ? 'bg-rose-950/80 border-rose-500/50 text-rose-200'
-                  : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                  : isLocked
+                    ? 'bg-amber-950/80 border-amber-400/50 text-amber-200'
+                    : 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
               }`}
             >
-              {frameState.isOccluded ? '구름 가림' : '시야 트임'}
+              {isStormBlocked ? '측량 불가' : isLocked ? '측정 잠금' : '측량 가능'}
             </span>
           </div>
         </div>
         <p className="text-[11px] text-slate-300 leading-snug">{weather.description}</p>
-        {weatherId === 'storm' && (
+        {isStormBlocked && (
           <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-purple-950/80 border border-purple-400/40 px-2.5 py-1.5 text-[11px] font-bold text-purple-200">
             <AlertTriangle className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-            <span>폭풍우 경보: 구름 틈이 매우 짧고 파도 흔들림이 극심합니다!</span>
+            <span>폭풍우 경보: 폭풍우로 인해 이번 턴 천체 측량이 불가능합니다!</span>
           </div>
         )}
       </section>
@@ -271,8 +291,8 @@ export default function QuadrantTab({
           <>
             <p className="text-xs text-slate-300 mb-2 leading-relaxed">
               밤하늘을 드래그해 <strong>북두칠성</strong>(국자 끝 두 별의 5배 연장선)과{' '}
-              <strong>카시오페이아(W자)</strong>로 북극성을 찾고, 흔들리는 조준원이 겹치며 구름이
-              걷히는 찰나에 측정하세요.
+              <strong>카시오페이아(W자)</strong>로 북극성을 찾고, 흔들리는 조준원이 겹치는 순간
+              측정하세요.
             </p>
 
             {/* Unlabeled Night Sky Viewport */}
@@ -281,7 +301,9 @@ export default function QuadrantTab({
               onPointerMove={handleNorthPointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-slate-700 bg-slate-950 touch-none cursor-grab active:cursor-grabbing"
+              className={`relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-slate-700 bg-slate-950 touch-none ${
+                isLocked || isStormBlocked ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'
+              }`}
             >
               <svg viewBox="-80 -58 160 116" className="w-full h-full block">
                 <defs>
@@ -346,12 +368,16 @@ export default function QuadrantTab({
                   <circle cx={POLARIS_POS.x} cy={POLARIS_POS.y} r="1.5" fill="#f8fafc" />
                 </g>
 
-                {/* Dynamic Weather Cloud / Fog Veil */}
-                {frameState.cloudOpacity > 0.05 && (
-                  <g opacity={frameState.cloudOpacity}>
-                    <rect x="-80" y="-58" width="160" height="116" fill="#0f172a" />
-                    <ellipse cx="-25" cy="-12" rx="52" ry="26" fill="#334155" opacity="0.6" />
-                    <ellipse cx="30" cy="14" rx="58" ry="28" fill="#1e293b" opacity="0.7" />
+                {/* Storm-only Blocker Overlay (fog/cloud occlusion removed) */}
+                {isStormBlocked && (
+                  <g>
+                    <rect x="-80" y="-58" width="160" height="116" fill="#090d16" opacity="0.88" />
+                    <text x="0" y="-4" textAnchor="middle" fontSize="8" fontWeight="900" fill="#e9d5ff">
+                      ⛈️ 폭풍우로 측량 불가
+                    </text>
+                    <text x="0" y="9" textAnchor="middle" fontSize="5" fontWeight="700" fill="#cbd5e1">
+                      폭풍우가 지나간 다음 턴에 다시 관측하세요
+                    </text>
                   </g>
                 )}
 
@@ -418,18 +444,23 @@ export default function QuadrantTab({
 
             <button
               type="button"
+              disabled={isLocked || isStormBlocked}
               onClick={handleMeasureNorth}
-              className="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] py-2.5 text-sm font-black text-slate-950 transition cursor-pointer"
+              className="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 active:scale-[0.99] py-2.5 text-sm font-black text-slate-950 transition cursor-pointer disabled:cursor-not-allowed"
             >
-              <Crosshair className="w-4 h-4" />
-              북극성 고도 측정 (추 고정)
+              {isLocked ? <Lock className="w-4 h-4" /> : <Crosshair className="w-4 h-4" />}
+              {isStormBlocked
+                ? '폭풍우로 측량 불가'
+                : isLocked
+                  ? '측정 완료 (고정됨)'
+                  : '북극성 고도 측정 (추 고정)'}
             </button>
           </>
         ) : (
           <>
             <p className="text-xs text-amber-200/90 mb-2 leading-relaxed">
               화면을 위아래로 드래그하거나 버튼으로 사분의 눈금을 조절해{' '}
-              <strong>흔들리는 태양을 수평선 조준원</strong>에 맞추고 구름이 갠 순간 측정하세요.
+              <strong>흔들리는 태양을 수평선 조준원</strong>에 맞추어 측정하세요.
             </p>
 
             {/* Southern Hemisphere Noon Sun Horizon Alignment Viewport */}
@@ -438,7 +469,9 @@ export default function QuadrantTab({
               onPointerMove={handleSouthPointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-amber-500/30 bg-slate-950 touch-none cursor-ns-resize"
+              className={`relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-amber-500/30 bg-slate-950 touch-none ${
+                isLocked || isStormBlocked ? 'cursor-not-allowed' : 'cursor-ns-resize'
+              }`}
             >
               <svg viewBox="-80 -58 160 116" className="w-full h-full block">
                 <defs>
@@ -460,12 +493,16 @@ export default function QuadrantTab({
                   <circle cx="0" cy="0" r="4.5" fill="#fef08a" />
                 </g>
 
-                {/* Weather Clouds / Storm Occlusion */}
-                {frameState.cloudOpacity > 0.05 && (
-                  <g opacity={frameState.cloudOpacity}>
-                    <rect x="-80" y="-58" width="160" height="116" fill="#1e293b" />
-                    <ellipse cx="-20" cy="-16" rx="56" ry="26" fill="#334155" opacity="0.7" />
-                    <ellipse cx="26" cy="4" rx="58" ry="24" fill="#0f172a" opacity="0.65" />
+                {/* Storm-only Blocker Overlay (fog/cloud occlusion removed) */}
+                {isStormBlocked && (
+                  <g>
+                    <rect x="-80" y="-58" width="160" height="116" fill="#090d16" opacity="0.88" />
+                    <text x="0" y="-4" textAnchor="middle" fontSize="8" fontWeight="900" fill="#e9d5ff">
+                      ⛈️ 폭풍우로 측량 불가
+                    </text>
+                    <text x="0" y="9" textAnchor="middle" fontSize="5" fontWeight="700" fill="#cbd5e1">
+                      폭풍우가 지나간 다음 턴에 다시 관측하세요
+                    </text>
                   </g>
                 )}
 
@@ -496,12 +533,13 @@ export default function QuadrantTab({
                 <button
                   key={delta}
                   type="button"
+                  disabled={isLocked || isStormBlocked}
                   onClick={() =>
                     setAimElevation((prev) =>
                       Math.max(0, Math.min(90, Number((prev + delta).toFixed(1)))),
                     )
                   }
-                  className="rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 py-1.5 text-xs font-bold text-slate-200 cursor-pointer"
+                  className="rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 py-1.5 text-xs font-bold text-slate-200 cursor-pointer disabled:cursor-not-allowed"
                 >
                   {delta > 0 ? `+${delta}°` : `${delta}°`}
                 </button>
@@ -516,32 +554,64 @@ export default function QuadrantTab({
 
             <button
               type="button"
+              disabled={isLocked || isStormBlocked}
               onClick={handleMeasureSouth}
-              className="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] py-2.5 text-sm font-black text-slate-950 transition cursor-pointer"
+              className="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 active:scale-[0.99] py-2.5 text-sm font-black text-slate-950 transition cursor-pointer disabled:cursor-not-allowed"
             >
-              <Sun className="w-4 h-4" />
-              정오 태양 고도(h) 측정
+              {isLocked ? <Lock className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              {isStormBlocked
+                ? '폭풍우로 측량 불가'
+                : isLocked
+                  ? '측정 완료 (고정됨)'
+                  : '정오 태양 고도(h) 측정'}
             </button>
           </>
         )}
 
-        {/* Measurement Result Banner */}
-        {measurement && (
-          <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3 text-xs space-y-1">
-            <div className="flex items-center justify-between font-bold text-emerald-300">
-              <span className="flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                제{measurement.turn}턴 관측 성공 ({measurement.weatherName} · {measurement.precisionLabel})
-              </span>
-              <span>{measurement.dateLabel}</span>
-            </div>
-            {measurement.hemisphere === 'north' ? (
-              <div className="text-sm font-black text-white">
-                측정된 북극성 고도 = 북위 {measurement.measuredDeg.toFixed(1)}°N
+        {/* Measurement Result Banner & Paid Re-measure Control */}
+        {shownMeasurement && (
+          <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3 text-xs space-y-2">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between font-bold text-emerald-300">
+                <span className="flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  제{shownMeasurement.turn}턴 관측 성공 ({shownMeasurement.weatherName} · {shownMeasurement.precisionLabel})
+                </span>
+                <span>{shownMeasurement.dateLabel}</span>
               </div>
-            ) : (
-              <div className="text-sm font-black text-white">
-                관측된 정오 태양 고도(h) = {measurement.measuredDeg.toFixed(1)}°
+              {shownMeasurement.hemisphere === 'north' ? (
+                <div className="text-sm font-black text-white">
+                  측정된 북극성 고도 = 북위 {shownMeasurement.measuredDeg.toFixed(1)}°N
+                </div>
+              ) : (
+                <div className="text-sm font-black text-white">
+                  관측된 정오 태양 고도(h) = {shownMeasurement.measuredDeg.toFixed(1)}°
+                </div>
+              )}
+            </div>
+
+            {isLocked && onUnlockQuadrant && (
+              <div className="pt-1 border-t border-emerald-500/25 flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  disabled={food < REMEASURE_FOOD_COST || isStormBlocked}
+                  onClick={() => {
+                    setMeasurement(null);
+                    setAimWarning(null);
+                    onUnlockQuadrant(REMEASURE_FOOD_COST);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-sky-400/50 bg-sky-500/20 hover:bg-sky-500/30 disabled:opacity-45 py-2 text-xs font-black text-sky-200 transition cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Droplets className="w-3.5 h-3.5 text-sky-300" />
+                  <span>
+                    식량·식수 {REMEASURE_FOOD_COST} 사용하여 다시 측정하기 (보유: {food})
+                  </span>
+                </button>
+                {food < REMEASURE_FOOD_COST && (
+                  <div className="text-[10px] text-rose-300 text-center">
+                    보유 식량·식수가 {REMEASURE_FOOD_COST} 미만이어서 재측정할 수 없습니다.
+                  </div>
+                )}
               </div>
             )}
           </div>

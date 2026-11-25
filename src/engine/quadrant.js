@@ -110,26 +110,21 @@ export function computeWeatherSway(weatherId, tSec) {
     Math.sin(tSec * 2.15 * s) * (w.swayAmpY * 0.35) +
     gustY;
 
-  // Periodic cloud wave drifting across center target (0..1)
-  const cloudWave = 0.5 + 0.5 * Math.sin(tSec * (0.65 + s * 0.25) + Math.cos(tSec * 0.41));
-  // Effective cloud opacity over the target star/sun
-  const cloudOpacity = Math.min(
-    0.98,
-    Math.max(0, w.cloudCover * 0.72 + cloudWave * w.cloudCover * 0.52 - 0.14),
-  );
-  const isOccluded = cloudOpacity >= 0.58;
+  // Storm completely blocks celestial sightlines; fog/cloud occlusion removed
+  const isOccluded = w.id === 'storm';
+  const cloudOpacity = isOccluded ? 0.94 : 0;
 
   return {
     weather: w,
     swayX,
     swayY,
-    cloudOpacity: Number(cloudOpacity.toFixed(2)),
+    cloudOpacity,
     isOccluded,
   };
 }
 
 /**
- * Evaluate a Quadrant lock-on attempt against weather tolerance and cloud occlusion.
+ * Evaluate a Quadrant lock-on attempt against weather tolerance and storm blockage.
  */
 export function evaluateQuadrantShot({
   trueAltitudeDeg,
@@ -141,14 +136,11 @@ export function evaluateQuadrantShot({
 }) {
   const w = getWeatherById(weatherId);
 
-  if (isOccluded) {
+  if (w.id === 'storm' || isOccluded) {
     return {
       ok: false,
-      reason: 'cloud',
-      message:
-        w.id === 'storm'
-          ? '폭풍우와 두꺼운 먹구름이 하늘을 완전히 가려 관측에 실패했습니다!'
-          : '구름·해무가 천체를 가리는 순간에 측정하여 관측에 실패했습니다. 틈이 열릴 때 다시 시도하세요.',
+      reason: 'storm',
+      message: '폭풍우로 인해 천체 측량이 불가능합니다! 폭풍우가 지나간 다음 턴에 측량하세요.',
     };
   }
 
@@ -156,10 +148,7 @@ export function evaluateQuadrantShot({
     return {
       ok: false,
       reason: 'missed',
-      message:
-        w.id === 'storm'
-          ? `폭풍우의 거친 너울로 조준이 크게 벗어났습니다! (허용 오차 ±${w.toleranceDeg}° 이내 필요)`
-          : `파도 흔들림 속에서 조준원 정중앙(±${w.toleranceDeg}°)에 맞추지 못했습니다. 타이밍을 노려 다시 시도하세요.`,
+      message: `파도 흔들림 속에서 조준원 정중앙(±${w.toleranceDeg}°)에 맞추지 못했습니다. 타이밍을 노려 다시 시도하세요.`,
     };
   }
 

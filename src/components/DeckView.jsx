@@ -248,7 +248,7 @@ export default function DeckView({
             <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={weatherId === 'storm' ? '#090d1a' : isStormy ? '#111827' : '#0c1e38'} />
               <stop offset="55%" stopColor={weatherId === 'storm' ? '#1e293b' : isStormy ? '#334155' : '#1e4976'} />
-              <stop offset="100%" stopColor={weatherId === 'storm' ? '#475569' : weatherId === 'fog' ? '#94a3b8' : '#7db4d8'} />
+              <stop offset="100%" stopColor={weatherId === 'storm' ? '#475569' : '#7db4d8'} />
             </linearGradient>
             <linearGradient id="seaGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#124e78" />
