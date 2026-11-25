@@ -907,5 +907,23 @@ export function getDemoRivalFleets(currentTurn) {
         { turn: 1, lat: 33.5, lon: -12.5 },
       ],
     },
+    {
+      clientId: 'demo-drake',
+      teamName: '🏴‍☠️ 드레이크 사략선(AI)',
+      isDemo: true,
+      isPirate: true,
+      turn: t,
+      completedTurn: t - 1,
+      lat: Number((37.5 - Math.min(t, 8) * 6.2 + Math.max(0, t - 8) * 2.5).toFixed(2)),
+      lon: Number((-10.5 - Math.min(t, 6) * 4.4 + Math.max(0, t - 6) * 5.2).toFixed(2)),
+      headingDeg: t < 6 ? 205 : 135,
+      gold: 560,
+      food: 110,
+      hull: 95,
+      cargoCount: 1,
+      lastEvent: '대서양 항로 초계 및 약탈 중',
+      status: 'active',
+      trail: [{ turn: 0, lat: 38.7, lon: -9.1 }],
+    },
   ];
 }

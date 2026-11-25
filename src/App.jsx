@@ -801,7 +801,15 @@ export default function App() {
             const payloadWithRoom = { ...newInteraction, roomCode: rc };
             if (isSupabaseConfigured) {
               const created = await createInteractionSupabase(payloadWithRoom);
-              if (created) roomIntersSnapshot.unshift(created);
+              if (created) {
+                roomIntersSnapshot.unshift(created);
+                if (rc === cleanRoom) {
+                  setInteractions((prev) =>
+                    prev.some((x) => x.id === created.id) ? prev : [created, ...prev],
+                  );
+                  sendPingRef.current?.();
+                }
+              }
             } else {
               const localItem = {
                 ...payloadWithRoom,
@@ -1506,6 +1514,38 @@ export default function App() {
     if (hintText) setCardHintBanner(hintText);
     if (nextState.status !== 'active') {
       openEndGameModal(nextState);
+      return;
+    }
+
+    // In Solo mode, allow patrolling pirate/rival demo fleets within 16° to ambush or hail the player
+    if (playMode === 'solo' && showDemoRivals && !nextState.interactedThisTurn && !localDemoInteraction) {
+      const nearbyDemos = getNearbyFleets(
+        nextState.lat,
+        nextState.lon,
+        nextState.headingDeg,
+        getDemoRivalFleets(nextState.activeTurn || nextState.turn),
+        16,
+        windEval?.degPerCm || 10,
+      );
+      const pirateChallenger = nearbyDemos.find((d) => d.isPirate);
+      const challenger = pirateChallenger || nearbyDemos[0];
+      const attackRoll = pirateChallenger ? 0.72 : 0.25;
+      if (challenger && Math.random() < attackRoll) {
+        const ambushTurn = nextState.activeTurn || nextState.turn;
+        setLocalDemoInteraction({
+          id: `demo-ambush-${ambushTurn}-${Date.now()}`,
+          roomCode: cleanRoom,
+          turn: ambushTurn,
+          type: 'battle',
+          initiatorId: challenger.clientId,
+          initiatorName: challenger.teamName,
+          targetId: clientId,
+          targetName: teamName.trim() || '내 선단',
+          status: 'pending',
+          payload: createInitialBattlePayload(),
+        });
+        setTurnToast(`⚠️ ${challenger.teamName}이(가) 먼저 전투를 걸어왔습니다!`);
+      }
     }
   };
 
@@ -1706,11 +1746,12 @@ export default function App() {
     await patchInteraction(inter, { payload: nextPayload, status: nextStatus });
 
     if (inter.id.startsWith('demo-') && nextStatus === 'active') {
+      const aiRole = actorRole === 'initiator' ? 'target' : 'initiator';
       const aiPick = RPS_OPTIONS[Math.floor(Math.random() * RPS_OPTIONS.length)].id;
       setTimeout(() => {
         setLocalDemoInteraction((cur) => {
           if (!cur || cur.id !== inter.id) return cur;
-          const aiStep = advanceBattleState(cur.payload, 'target', aiPick);
+          const aiStep = advanceBattleState(cur.payload, aiRole, aiPick);
           return {
             ...cur,
             payload: aiStep.nextPayload,

@@ -49,9 +49,10 @@ export const AI_PERSONALITIES = {
     label: '해적형',
     badge: '🏴‍☠️ 해적',
     names: ['드레이크 사략선(AI)', '바르바로사 해적(AI)', '키드 해적단(AI)'],
-    battleChance: 0.72,
+    battleChance: 0.85,
     tradeInitiateChance: 0.05,
     tradeAcceptChance: 0.25,
+    ambushRadiusDeg: 16,
   },
   merchant: {
     id: 'merchant',
@@ -756,14 +757,26 @@ export function runAiActivityStep(
     }
   }
 
-  // 2) Nearby Fleet Interaction (Pirate attacks proactively; Merchant offers trade; Explorer occasional)
+  // 2) Nearby Fleet Interaction (Pirate hunts human ships proactively within 16°; others use 10° and still prioritize humans over bots)
   let newInteraction = null;
   if (state.status === 'active' && !state.interactedThisTurn) {
     const otherPeers = (roomFleets || []).filter(
       (f) => f.clientId !== aiFleet.clientId && f.status === 'active',
     );
-    const nearbyPeers = getNearbyFleets(state.lat, state.lon, state.headingDeg, otherPeers);
-    const eligiblePeer = nearbyPeers.find(
+    const searchRadiusDeg = pMeta.ambushRadiusDeg || undefined;
+    const nearbyPeers = getNearbyFleets(
+      state.lat,
+      state.lon,
+      state.headingDeg,
+      otherPeers,
+      searchRadiusDeg,
+    );
+    // Prioritize real human players first so bots don't exhaust their turn fighting each other silently
+    const prioritizedPeers = [
+      ...nearbyPeers.filter((p) => !p.isAi),
+      ...nearbyPeers.filter((p) => p.isAi),
+    ];
+    const eligiblePeer = prioritizedPeers.find(
       (p) =>
         canInitiateInteractionWithPeer(
           roomInteractions,

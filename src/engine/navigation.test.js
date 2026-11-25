@@ -813,6 +813,36 @@ test('AI players cap at 3/room, stay online, battle/trade proactively, and Lv.4 
     evaluateMissionProgress(lv4.aiConfig.state, 'mission_1').goalAchieved,
     true,
   );
+
+  // Pirate AI prioritizes human fleets (within 16° ambush radius) over closer AI peers
+  const ambushPirate = createAiFleetPayload({ personality: 'pirate', level: 3, missionId: 'mission_event_cape' });
+  const peerBot = createAiFleetPayload({
+    existingFleets: [ambushPirate],
+    personality: 'explorer',
+    level: 2,
+    missionId: 'mission_event_cape',
+  });
+  const humanFleet = {
+    clientId: 'human-player-1',
+    teamName: '사람 탐험단',
+    status: 'active',
+    isAi: false,
+    lat: ambushPirate.lat - 12, // 12° away (outside standard 10° radar, inside pirate 16° ambush radius; peerBot is 0° away)
+    lon: ambushPirate.lon,
+    headingDeg: 180,
+  };
+  const pirateAmbush = runAiActivityStep(
+    ambushPirate,
+    1,
+    'mission_event_cape',
+    [ambushPirate, peerBot, humanFleet],
+    [],
+    () => 0.2,
+  );
+  assert.ok(pirateAmbush.newInteraction, 'Pirate should initiate battle with nearby human fleet');
+  assert.equal(pirateAmbush.newInteraction.type, 'battle');
+  assert.equal(pirateAmbush.newInteraction.initiatorId, ambushPirate.clientId);
+  assert.equal(pirateAmbush.newInteraction.targetId, humanFleet.clientId);
 });
 
 test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldrums fail & Volta do Mar balance', () => {
