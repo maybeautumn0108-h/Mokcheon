@@ -169,11 +169,24 @@ export function computePlannedMove(state) {
     state.isFullSail,
   );
 
-  let effectiveCm = (windEval.moveCm + (state.nextTurnBonusCm || 0)) * moveScale;
+  let rawMoveCm = windEval.moveCm;
+  if (mission.strictWindFullSail && state.isFullSail) {
+    if (windEval.isDoldrums || windEval.windClass.id === 'headwind') {
+      rawMoveCm = windEval.baseCm;
+    } else if (windEval.windClass.id === 'calm') {
+      rawMoveCm = windEval.baseCm + 0.4;
+    }
+  }
+
+  let effectiveCm = (rawMoveCm + (state.nextTurnBonusCm || 0)) * moveScale;
   if (typeof state.nextTurnMaxCm === 'number') {
     effectiveCm = Math.min(effectiveCm, state.nextTurnMaxCm * moveScale);
   }
-  effectiveCm = Math.max(0.5, Number(effectiveCm.toFixed(1)));
+  if (windEval.isDoldrums && mission.doldrumsMoveScale) {
+    effectiveCm *= mission.doldrumsMoveScale;
+  }
+  const minCm = windEval.isDoldrums && mission.doldrumsMoveScale ? 0.3 : 0.5;
+  effectiveCm = Math.max(minCm, Number(effectiveCm.toFixed(1)));
 
   return {
     ...windEval,

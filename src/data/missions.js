@@ -68,19 +68,21 @@ export const MISSIONS = [
   {
     id: 'mission_event_cape',
     shortTitle: '행사 · 희망봉 찾기',
-    title: '행사 미션: 희망봉 개척 (10턴 단방향)',
-    maxTurns: 10,
+    title: '행사 미션: 희망봉 개척 (15턴 단방향)',
+    maxTurns: 15,
     positionCheckInterval: 2,
     isOneWayGoal: true,
     goalPortId: 'goodhope',
     goalDockRadiusDeg: 4.0,
-    moveScale: 0.45,
-    initialFood: 135,
+    moveScale: 0.35,
+    doldrumsMoveScale: 0.45,
+    strictWindFullSail: true,
+    initialFood: 140,
     coastalSpeedScale: 0.72,
-    badgeText: '희망봉 4.0° 이내 · 10턴 · 2턴 위치확인',
+    badgeText: '희망봉 4.0° 이내 · 15턴 · 2턴 위치확인',
     summary:
-      '바르톨로메우 디아스의 발자취를 따라 10턴 안에 아프리카 최남단 희망봉에 도착하세요! 남대서양 역풍을 피해 서쪽 환류와 남위 30° 이남 편서풍을 타면 7~8턴 만에 도달할 수 있습니다.',
-    rulesNote: '목표: 10턴 이내 희망봉 정밀 입항(4.0°) · 이동 0.45배 · 초기 식량 135',
+      '바르톨로메우 디아스의 발자취를 따라 15턴 안에 아프리카 최남단 희망봉에 도착하세요! 적도 무풍대와 남대서양 역풍을 정면 강행하면 도착할 수 없으니, 서쪽 환류와 편서풍·중간 기항 보급을 활용하세요.',
+    rulesNote: '목표: 15턴 이내 희망봉 정밀 입항(4.0°) · 이동 0.35배 · 무풍지대 강행 불가',
   },
 ];
 

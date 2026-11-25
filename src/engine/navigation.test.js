@@ -815,10 +815,10 @@ test('AI players cap at 3/room, stay online, battle/trade proactively, and Lv.4 
   );
 });
 
-test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-way Good Hope victory & settlement', () => {
+test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldrums fail & Volta do Mar balance', () => {
   const mission = getMissionById('mission_event_cape');
   assert.equal(mission.id, 'mission_event_cape');
-  assert.equal(mission.maxTurns, 10);
+  assert.equal(mission.maxTurns, 15);
   assert.equal(mission.positionCheckInterval, 2);
   assert.equal(mission.isOneWayGoal, true);
   assert.equal(mission.goalPortId, 'goodhope');
@@ -858,7 +858,7 @@ test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-wa
   const settlement = calculateFinalSettlement(winRes.nextState);
   assert.equal(settlement.missionBonus, 300);
 
-  // Lv.4 Master AI completes mission_event_cape within 10 turns
+  // Lv.4 Master AI completes mission_event_cape within 15 turns
   const makeRng = (seed = 19) => {
     let s = seed;
     return () => {
@@ -872,24 +872,24 @@ test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-wa
     missionId: 'mission_event_cape',
   });
   const rngCape = makeRng(19);
-  for (let t = 1; t <= 10; t++) {
+  for (let t = 1; t <= 15; t++) {
     if (aiCape.status === 'active') {
       aiCape = runAiSailAndCardStep(aiCape, t, 'mission_event_cape', rngCape);
       aiCape = runAiActivityStep(aiCape, t, 'mission_event_cape', [aiCape], [], rngCape).updatedFleet;
     }
   }
   assert.equal(aiCape.status, 'returned');
-  assert.ok(aiCape.aiConfig.state.turn >= 6 && aiCape.aiConfig.state.turn <= 9, `Expected Lv.4 AI 6~9 turns, got ${aiCape.aiConfig.state.turn}`);
+  assert.ok(aiCape.aiConfig.state.turn >= 7 && aiCape.aiConfig.state.turn <= 12, `Expected Lv.4 AI 7~12 turns, got ${aiCape.aiConfig.state.turn}`);
   assert.equal(
     evaluateMissionProgress(aiCape.aiConfig.state, 'mission_event_cape').goalAchieved,
     true,
   );
 
-  // Verify 7~10 turn balance curve: optimal (~7 turns), 1-mistake recovery (<= 10 turns), naive direct fails
-  const runCapeStrategy = (wps, isMistakeTurn1 = false, isNaive = false) => {
+  // Verify 15-turn balance: optimal (~8-9 turns), 1-mistake + resupply recovery (<= 15), forcing doldrums fails
+  const runCapeStrategy = (wps, { isMistakeTurn1 = false, forceDoldrums = false, dockResupply = false } = {}) => {
     let s = createInitialGameState('mission_event_cape');
     let wpIdx = 0;
-    for (let t = 1; t <= 10; t++) {
+    for (let t = 1; t <= 15; t++) {
       if (s.status !== 'active') break;
       while (wpIdx < wps.length - 1 && b4EuclideanDeg(s.lat, s.lon, wps[wpIdx].lat, wps[wpIdx].lon) <= 10) {
         wpIdx++;
@@ -897,26 +897,42 @@ test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-wa
       const tgt = wps[wpIdx];
       let h = Math.round(((Math.atan2(tgt.lon - s.lon, tgt.lat - s.lat) * 180) / Math.PI + 360) % 360);
       const w0 = evaluateWind(h, s.lat, s.lon, t, false);
-      let full = !isNaive && (isMistakeTurn1 ? t >= 3 && w0.windClass.id === 'tailwind' : (w0.windClass.id === 'tailwind' || w0.windClass.id === 'reach'));
+      let full = forceDoldrums || (isMistakeTurn1 ? t >= 3 && w0.windClass.id === 'tailwind' : (w0.windClass.id === 'tailwind' || w0.windClass.id === 'reach'));
       if (isMistakeTurn1 && t === 1) {
         h = 135;
         full = false;
       }
       const res = executeSailTurn({ ...s, headingDeg: h, isFullSail: full }, () => 0.9);
-      s = { ...res.nextState, turnStep: 'sail' };
+      s = { ...res.nextState, turnStep: 'activity' };
+      if (dockResupply && s.status === 'active') {
+        const ep = enterPortInActivity(s);
+        if (ep.dockedPort) {
+          const bs = buySupplies(ep.nextState);
+          s = bs?.nextState || ep.nextState;
+        }
+      }
+      if (s.status === 'active') {
+        s = finishActivityTurn(s);
+      }
     }
     return s;
   };
   const optRes = runCapeStrategy([{ lat: 20, lon: -26 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }]);
   assert.equal(optRes.status, 'returned');
-  assert.ok(optRes.turn <= 8, `Expected optimal route <= 8 turns, got ${optRes.turn}`);
+  assert.ok(optRes.turn <= 10, `Expected optimal route <= 10 turns, got ${optRes.turn}`);
 
-  const mistRes = runCapeStrategy([{ lat: 15, lon: -26 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }], true);
+  const mistRes = runCapeStrategy(
+    [{ lat: 15, lon: -26 }, { lat: -33, lon: -16 }, { lat: -34.5, lon: 18.5 }],
+    { isMistakeTurn1: true, dockResupply: true },
+  );
   assert.equal(mistRes.status, 'returned');
-  assert.ok(mistRes.turn >= 9 && mistRes.turn <= 10, `Expected 1-mistake route 9~10 turns, got ${mistRes.turn}`);
+  assert.ok(mistRes.turn >= 10 && mistRes.turn <= 14, `Expected 1-mistake recovery 10~14 turns, got ${mistRes.turn}`);
 
-  const naiveRes = runCapeStrategy([{ lat: -34.5, lon: 18.5 }], false, true);
-  assert.notEqual(naiveRes.status, 'returned');
+  const doldrumsRes = runCapeStrategy(
+    [{ lat: 3, lon: -5 }, { lat: -10, lon: 8 }, { lat: -34.5, lon: 18.5 }],
+    { forceDoldrums: true, dockResupply: true },
+  );
+  assert.notEqual(doldrumsRes.status, 'returned', 'Forcing straight through equatorial doldrums must fail');
 });
 
 test('20. 3-segment island bypass resumes original heading after Taiwan, and small-island ports stop on entry then depart freely', () => {

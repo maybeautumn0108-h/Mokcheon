@@ -48,7 +48,7 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
             [18.5, -34.5],
           ]),
         ],
-        target: { lon: 18.5, lat: -34.5, label: '목표: 희망봉 (10턴 단방향!)' },
+        target: { lon: 18.5, lat: -34.5, label: '목표: 희망봉 (15턴 단방향!)' },
         blockedCape: false,
       };
     }
