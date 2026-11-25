@@ -213,7 +213,7 @@ export default function DeckView({
           {isBlockedAhead && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-950/90 backdrop-blur-sm border border-amber-400/60 px-3 py-1 text-[11px] font-bold text-amber-200 shadow-lg">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>정면이 육지에 막혀 이 방향으로는 갈 수 없습니다</span>
+              <span>정면 연안 인접 · 출항 시 해안을 따라 우회 항해합니다</span>
             </div>
           )}
           {closestRival && (

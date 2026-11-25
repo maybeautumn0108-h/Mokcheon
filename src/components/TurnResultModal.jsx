@@ -26,39 +26,82 @@ export default function TurnResultModal({ outcome, state, onClose }) {
               제{outcome.completedTurn}턴 ({outcome.dateLabel}) 보고
             </div>
             <h3 className="text-base font-black text-white mt-0.5">
-              {outcome.collided
-                ? outcome.actualCm <= 0.05
-                  ? `제${outcome.completedTurn}턴: 육지에 막혀 이 방향으로는 갈 수 없습니다 (0.0 cm)`
-                  : `제${outcome.completedTurn}턴: 육지에 닿아 자로 ${outcome.actualCm.toFixed(1)} cm 이동 후 정지`
-                : `제${outcome.completedTurn}턴 항해 완료! 자로 ${outcome.actualCm.toFixed(1)} cm 이동`}
+              {outcome.stoppedAtPort
+                ? `제${outcome.completedTurn}턴: 연안 항해 중 [${outcome.stoppedAtPort.name}] 도착 정지 (${outcome.actualCm.toFixed(1)} cm)`
+                : outcome.coastalGuided
+                  ? `제${outcome.completedTurn}턴: 육지를 만나 연안 우회 항해! (총 ${outcome.actualCm.toFixed(1)} cm)`
+                  : outcome.collided
+                    ? outcome.actualCm <= 0.05
+                      ? `제${outcome.completedTurn}턴: 육지에 막혀 이 방향으로는 갈 수 없습니다 (0.0 cm)`
+                      : `제${outcome.completedTurn}턴: 육지에 닿아 자로 ${outcome.actualCm.toFixed(1)} cm 이동 후 정지`
+                    : `제${outcome.completedTurn}턴 항해 완료! 자로 ${outcome.actualCm.toFixed(1)} cm 이동`}
             </h3>
           </div>
         </div>
 
         {/* Ruler Plotting Instruction Box */}
-        <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-950/40 p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-sky-200">
-            <Ruler className="w-4 h-4 text-sky-400 shrink-0" />
-            <span>B4 종이 지도 작도</span>
+        <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-950/40 p-3 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-sky-200 font-semibold">
+              <Ruler className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>
+                B4 종이 지도 작도
+                {outcome.segments?.length > 1 ? ' (2구간 꺾어 그리기)' : ''}
+              </span>
+            </div>
+            {(!outcome.segments || outcome.segments.length <= 1) && (
+              <div className="text-sm font-black text-sky-300 tabular-nums">
+                방위 {String(outcome.segments?.[0]?.headingDeg ?? outcome.headingDeg).padStart(3, '0')}° · 자로 {outcome.actualCm.toFixed(1)} cm
+              </div>
+            )}
           </div>
-          <div className="text-sm font-black text-sky-300 tabular-nums">
-            방위 {String(outcome.headingDeg).padStart(3, '0')}° · 자로 {outcome.actualCm.toFixed(1)} cm
-          </div>
+
+          {outcome.segments?.length > 1 && (
+            <div className="grid grid-cols-1 gap-1 pt-1 border-t border-sky-500/20 text-xs">
+              {outcome.segments.map((seg, idx) => (
+                <div key={idx} className="flex items-center justify-between text-sky-100">
+                  <span className="text-sky-300 font-bold">
+                    {idx === 0 ? '① 1차 직진 (해안 조우)' : '② 연안 우회 항해'}
+                  </span>
+                  <span className="font-black text-sky-200 tabular-nums">
+                    방위 {String(seg.headingDeg).padStart(3, '0')}° · 자로 {seg.cm.toFixed(1)} cm
+                  </span>
+                </div>
+              ))}
+              <div className="text-right text-[11px] font-bold text-sky-300/90 pt-0.5">
+                총 이동 거리: {outcome.actualCm.toFixed(1)} cm
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Coastal Stop Warning (No hull damage, no continent names!) */}
-        {outcome.collided && (
-          <div className="mt-2.5 rounded-xl border border-amber-500/45 bg-amber-950/40 p-3 text-xs text-amber-100 space-y-1.5">
-            <div className="font-bold text-amber-300 flex items-center gap-1.5">
+        {/* Coastal Skirting / Stop Notice */}
+        {(outcome.coastalGuided || outcome.collided) && (
+          <div
+            className={`mt-2.5 rounded-xl border p-3 text-xs space-y-1.5 ${
+              outcome.coastalGuided
+                ? 'border-cyan-500/45 bg-cyan-950/35 text-cyan-100'
+                : 'border-amber-500/45 bg-amber-950/40 text-amber-100'
+            }`}
+          >
+            <div
+              className={`font-bold flex items-center gap-1.5 ${
+                outcome.coastalGuided ? 'text-cyan-300' : 'text-amber-300'
+              }`}
+            >
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>
-                {outcome.hitBoundary
-                  ? '항해도 경계에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없습니다.'
-                  : '육지(해안선)에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없으니 방위를 돌려주세요.'}
+                {outcome.stoppedAtPort
+                  ? `육지와 맞닥뜨려 해안을 따라 우회 항해하던 중 [${outcome.stoppedAtPort.name}] 기항지를 만나 즉시 멈췄습니다!`
+                  : outcome.coastalGuided
+                    ? `육지에 부딪혀 기존 항로(${String(outcome.headingDeg).padStart(3, '0')}°)와 가장 가까운 방위(${String(outcome.coastalHeadingDeg).padStart(3, '0')}°)로 연안 항해를 진행했습니다.`
+                    : outcome.hitBoundary
+                      ? '항해도 경계에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없습니다.'
+                      : '육지(해안선)에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없으니 방위를 돌려주세요.'}
               </span>
             </div>
             {outcome.blockedRanges.length > 0 && (
-              <div className="flex items-center gap-1.5 text-amber-200/95">
+              <div className="flex items-center gap-1.5 opacity-95">
                 <Compass className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>
                   갈 수 없는 방위각 범위: <strong>{outcome.blockedRanges.join(', ')}</strong>

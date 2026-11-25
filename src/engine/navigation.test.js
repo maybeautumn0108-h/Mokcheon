@@ -97,45 +97,42 @@ test('Wind evaluation matches B4 ruler distances (1cm / 2cm / 3cm / 4cm + 1cm fu
   assert.equal(doldrums.moveCm, 2.0);
 });
 
-test('Sailing East directly into West Africa stops right at coastline with zero hull damage and warns on blocked heading', () => {
-  const result = resolveMovement(10, -20, 90, 40);
-  assert.equal(result.collided, true);
-  assert.equal(isPointOnLand(result.endLat, result.endLon), false);
-  // No sideways oblique deflection or offshore push-back
-  assert.equal(result.endLat, 10);
+test('Sailing East directly into West Africa performs Method A coastal skirting with zero hull damage', () => {
+  // Short move near shoreline glides smoothly along closest open coast and stays in navigable water
+  const shortGlide = resolveMovement(10, -20, 90, 6);
+  assert.equal(shortGlide.collided, true);
+  assert.equal(shortGlide.coastalGuided, true);
+  assert.equal(isPointOnLand(shortGlide.endLat, shortGlide.endLon), false);
+  assert.equal(shortGlide.segments.length, 2);
+  assert.ok(shortGlide.actualCm >= 0.55);
 
-  const nearest = findNearestCoast(result.endLat, result.endLon, 5);
-  assert.ok(nearest, 'Should rest right against nearby coast');
-  assert.ok(
-    nearest.distDeg <= 0.3,
-    `Expected ship to stop touching coast (<= 0.3°), got ${nearest.distDeg}`,
-  );
-  assert.ok(result.blockedRanges.length > 0, 'Should report blocked azimuth ranges');
+  const nearest = findNearestCoast(shortGlide.endLat, shortGlide.endLon, 5);
+  assert.ok(nearest, 'Should remain near West African coastline after short coastal glide');
+  assert.ok(shortGlide.blockedRanges.length > 0, 'Should report blocked azimuth ranges near shore');
 
-  // Immediate ahead check warns for East (90°) at the stopped shoreline, clears for West (270°)
-  assert.equal(isDirectionImmediatelyBlocked(result.endLat, result.endLon, 90), true);
-  assert.equal(isDirectionImmediatelyBlocked(result.endLat, result.endLon, 270), false);
+  // Immediate ahead check still warns accurately when stopped adjacent to land
+  assert.equal(isDirectionImmediatelyBlocked(shortGlide.endLat, shortGlide.endLon, 90), true);
+  assert.equal(isDirectionImmediatelyBlocked(shortGlide.endLat, shortGlide.endLon, 270), false);
 
-  // Full sail turn hitting land inflicts 0 hull damage (pass rng >= 0.5 to isolate coastline hull behavior)
+  // Full sail turn hitting land inflicts 0 hull damage and continues via coastal skirting
   const initial = { ...createInitialGameState(), lat: 10, lon: -20, headingDeg: 90, isFullSail: true };
   const sailRes = executeSailTurn(initial, () => 0.9);
   assert.equal(sailRes.outcome.collided, true);
+  assert.equal(sailRes.outcome.coastalGuided, true);
   assert.equal(sailRes.outcome.hullDamage, 0);
   assert.equal(sailRes.nextState.hull, 100);
+  assert.ok(sailRes.outcome.segments.length >= 1);
 
-  // Sailing again into land from coastline stops at 0 cm with 0 hull damage
-  const blockedRetry = executeSailTurn(
-    {
-      ...sailRes.nextState,
-      turnStep: 'sail',
-      headingDeg: 90,
-    },
+  // Hitting the north world map boundary stops cleanly at 0 cm with 0 hull damage
+  const boundaryStop = executeSailTurn(
+    { ...createInitialGameState(), lat: 75, lon: -10, headingDeg: 0 },
     () => 0.9,
   );
-  assert.equal(blockedRetry.outcome.collided, true);
-  assert.equal(blockedRetry.outcome.actualCm, 0);
-  assert.equal(blockedRetry.outcome.hullDamage, 0);
-  assert.equal(blockedRetry.nextState.hull, 100);
+  assert.equal(boundaryStop.outcome.collided, true);
+  assert.equal(boundaryStop.outcome.hitBoundary, true);
+  assert.equal(boundaryStop.outcome.coastalGuided, false);
+  assert.equal(boundaryStop.outcome.actualCm, 0);
+  assert.equal(boundaryStop.outcome.hullDamage, 0);
 });
 
 test('Coastal sightings detect land within 6.0° at Lisbon without exposing continent names', () => {
@@ -879,4 +876,33 @@ test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-wa
     evaluateMissionProgress(aiCape.aiConfig.state, 'mission_event_cape').goalAchieved,
     true,
   );
+});
+
+test('20. Method A coastal skirting stops at newly encountered major ports, ignores small islands, and keeps Taiwan as land', () => {
+  // 1) Taiwan (23.5°N, 121.0°E) remains a full landmass polygon
+  assert.equal(isPointOnLand(23.5, 121.0), true);
+
+  // 2) Small island ports (Canaries, Azores, Cabo Verde, Guam) are ignored on horizon landmarks
+  //    so players are not misled into thinking open sea routes are blocked, while manual docking still works
+  const nearCanariesLms = findVisiblePortLandmarks(30.0, -14.5, 205, 10.0);
+  assert.equal(
+    nearCanariesLms.some((lm) => lm.id === 'canaries'),
+    false,
+    'Canary Islands should be ignored in horizon landmarks',
+  );
+  assert.equal(findNearbyPort(28.1, -15.4)?.id, 'canaries');
+
+  // 3) Sailing NE at (2.0, -11.0) for 2.5 cm hits Ivory Coast, glides ESE along Gulf of Guinea,
+  //    and halts unconditionally upon entering Elmina radius
+  const coastGlideToPort = resolveMovement(2.0, -11.0, 45, 25);
+  assert.equal(coastGlideToPort.collided, true);
+  assert.equal(coastGlideToPort.coastalGuided, true);
+  assert.equal(coastGlideToPort.segments.length, 2);
+  assert.equal(coastGlideToPort.stoppedAtPort?.id, 'elmina');
+  assert.ok(coastGlideToPort.actualCm < 2.5, 'Should stop early upon entering Elmina radius');
+  assert.equal(findNearbyPort(coastGlideToPort.endLat, coastGlideToPort.endLon)?.id, 'elmina');
+
+  // 4) Small island port (Cabo Verde) is ignored during coastal/collision skirting when passing south
+  const passSmallIsland = resolveMovement(22.0, -18.0, 120, 35);
+  assert.notEqual(passSmallIsland.stoppedAtPort?.id, 'caboverde');
 });

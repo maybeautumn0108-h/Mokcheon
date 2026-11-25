@@ -173,6 +173,10 @@ const RAW_LANDMASSES = [
   ],
 ];
 
+// Minimum island bounding-box area (deg^2) counted as landmass collision.
+// Taiwan (~1.8° x 3.2° = 5.76) and larger islands are recognized; tiny islets below this threshold are ignored.
+export const MIN_NAVIGABLE_ISLAND_BBOX_AREA = 5.5;
+
 // Precompute bounding boxes for ultra-fast spatial filtering
 export const LAND_POLYGONS = RAW_LANDMASSES.map((ring) => {
   let minLon = Infinity;
@@ -185,8 +189,9 @@ export const LAND_POLYGONS = RAW_LANDMASSES.map((ring) => {
     if (lat < minLat) minLat = lat;
     if (lat > maxLat) maxLat = lat;
   }
-  return { ring, minLon, maxLon, minLat, maxLat };
-});
+  const bboxArea = (maxLon - minLon) * (maxLat - minLat);
+  return { ring, minLon, maxLon, minLat, maxLat, bboxArea };
+}).filter((p) => p.bboxArea >= MIN_NAVIGABLE_ISLAND_BBOX_AREA);
 
 export function wrapLon(lon) {
   let x = ((lon + 180) % 360 + 360) % 360 - 180;
