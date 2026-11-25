@@ -1,4 +1,5 @@
 import { PORTS } from './ports.js';
+import { getMissionById } from './missions.js';
 import { findNearestCoast, shortestLonDelta } from './worldCoastlines.js';
 
 const MAX_FOOD = 140;
@@ -117,14 +118,15 @@ export const SITUATION_CARDS = [
     description: '갈매기와 떠내려온 나뭇가지가 관측되었습니다. 육지가 멀지 않습니다.',
     effectSummary: '가장 가까운 연안 방향 힌트 획득',
     apply: (state) => {
+      const degPerCm = getMissionById(state.missionId).chartDegPerCm || 10;
       const coast = findNearestCoast(state.lat, state.lon, 35);
       if (!coast) {
         return {
-          cardHint: '사방 3.5 cm(35°) 이내에 뚜렷한 육지 징후가 보이지 않습니다. 망망대해입니다.',
+          cardHint: `사방 ${(35 / degPerCm).toFixed(1)} cm(35°) 이내에 뚜렷한 육지 징후가 보이지 않습니다. 망망대해입니다.`,
         };
       }
       const deg = String(Math.round(coast.bearingToCoastDeg) % 360).padStart(3, '0');
-      const cm = (coast.distDeg / 10).toFixed(1);
+      const cm = (coast.distDeg / degPerCm).toFixed(1);
       return {
         cardHint: `방위 ${deg}° 방면 약 ${cm} cm 거리에 육지 연안 징후가 포착되었습니다.`,
       };
@@ -138,6 +140,7 @@ export const SITUATION_CARDS = [
     description: '지나가던 상선과 신호기를 교환하여 가까운 기항지 방위를 파악했습니다.',
     effectSummary: '가장 가까운 기항지 방향·거리 힌트',
     apply: (state) => {
+      const degPerCm = getMissionById(state.missionId).chartDegPerCm || 10;
       let bestPort = null;
       let bestDist = Infinity;
       for (const p of PORTS) {
@@ -154,7 +157,7 @@ export const SITUATION_CARDS = [
       const bearing =
         ((Math.atan2(bestPort.dLon, bestPort.dLat) * 180) / Math.PI + 360) % 360;
       const deg = String(Math.round(bearing)).padStart(3, '0');
-      const cm = (bestPort.dist / 10).toFixed(1);
+      const cm = (bestPort.dist / degPerCm).toFixed(1);
       return {
         cardHint: `방위 ${deg}° 방면 약 ${cm} cm 거리에 기항 가능 항구 신호가 있습니다.`,
       };

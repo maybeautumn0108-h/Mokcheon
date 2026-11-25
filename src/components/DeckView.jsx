@@ -83,6 +83,7 @@ export default function DeckView({
   nearbyFleets = [],
   weatherId = 'clear',
   isBlockedAhead = false,
+  degPerCm = 10,
 }) {
   const weather = useMemo(() => getWeatherById(weatherId), [weatherId]);
   const isStormy = weatherId === 'storm' || weatherId === 'squall';
@@ -119,15 +120,15 @@ export default function DeckView({
     }
 
     const parts = [];
-    if (portMin < Infinity) parts.push(`좌현 ${(portMin / 10).toFixed(1)}cm`);
-    if (aheadMin < Infinity) parts.push(`정면 ${(aheadMin / 10).toFixed(1)}cm`);
-    if (stbdMin < Infinity) parts.push(`우현 ${(stbdMin / 10).toFixed(1)}cm`);
+    if (portMin < Infinity) parts.push(`좌현 ${(portMin / degPerCm).toFixed(1)}cm`);
+    if (aheadMin < Infinity) parts.push(`정면 ${(aheadMin / degPerCm).toFixed(1)}cm`);
+    if (stbdMin < Infinity) parts.push(`우현 ${(stbdMin / degPerCm).toFixed(1)}cm`);
     if (parts.length === 0) {
       const minAll = Math.min(...sightings.map((s) => s.distDeg));
-      parts.push(`후방 ${(minAll / 10).toFixed(1)}cm`);
+      parts.push(`후방 ${(minAll / degPerCm).toFixed(1)}cm`);
     }
     return parts.join(' · ');
-  }, [sightings]);
+  }, [sightings, degPerCm]);
 
   const visibleRivalShips = useMemo(
     () =>

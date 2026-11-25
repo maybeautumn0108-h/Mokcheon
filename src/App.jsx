@@ -942,8 +942,16 @@ export default function App() {
   );
 
   const nearbyFleets = useMemo(
-    () => getNearbyFleets(gameState.lat, gameState.lon, gameState.headingDeg, otherFleets),
-    [gameState.lat, gameState.lon, gameState.headingDeg, otherFleets],
+    () =>
+      getNearbyFleets(
+        gameState.lat,
+        gameState.lon,
+        gameState.headingDeg,
+        otherFleets,
+        undefined,
+        windEval?.degPerCm || 10,
+      ),
+    [gameState.lat, gameState.lon, gameState.headingDeg, otherFleets, windEval?.degPerCm],
   );
 
   const windEval = useMemo(() => computePlannedMove(gameState), [gameState]);
@@ -2001,6 +2009,7 @@ export default function App() {
                 nearbyFleets={nearbyFleets}
                 weatherId={gameState.weatherId}
                 isBlockedAhead={isBlockedAhead}
+                degPerCm={windEval?.degPerCm || 10}
               />
 
               {turnStep === 'activity' && gameState.status === 'active' ? (

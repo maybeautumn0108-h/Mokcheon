@@ -47,7 +47,7 @@ export default function TurnResultModal({ outcome, state, onClose }) {
             <div className="flex items-center gap-2 text-xs text-sky-200 font-semibold">
               <Ruler className="w-4 h-4 text-sky-400 shrink-0" />
               <span>
-                B4 종이 지도 작도
+                {outcome.chartSizeLabel || 'B4'} 종이 지도 작도
                 {outcome.segments?.length > 1
                   ? ` (${outcome.segments.length}구간 꺾어 그리기)`
                   : ''}

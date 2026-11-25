@@ -161,6 +161,7 @@ export function b4EuclideanDeg(lat1, lon1, lat2, lon2) {
 export function computePlannedMove(state) {
   const mission = getMissionById(state.missionId);
   const moveScale = mission.moveScale || 1.0;
+  const degPerCm = mission.chartDegPerCm || 10;
   const windEval = evaluateWind(
     state.headingDeg,
     state.lat,
@@ -178,20 +179,23 @@ export function computePlannedMove(state) {
     }
   }
 
-  let effectiveCm = (rawMoveCm + (state.nextTurnBonusCm || 0)) * moveScale;
+  let effectiveDeg = (rawMoveCm + (state.nextTurnBonusCm || 0)) * 10 * moveScale;
   if (typeof state.nextTurnMaxCm === 'number') {
-    effectiveCm = Math.min(effectiveCm, state.nextTurnMaxCm * moveScale);
+    effectiveDeg = Math.min(effectiveDeg, state.nextTurnMaxCm * 10 * moveScale);
   }
   if (windEval.isDoldrums && mission.doldrumsMoveScale) {
-    effectiveCm *= mission.doldrumsMoveScale;
+    effectiveDeg *= mission.doldrumsMoveScale;
   }
-  const minCm = windEval.isDoldrums && mission.doldrumsMoveScale ? 0.3 : 0.5;
-  effectiveCm = Math.max(minCm, Number(effectiveCm.toFixed(1)));
+  const minDeg = windEval.isDoldrums && mission.doldrumsMoveScale ? 3.0 : mission.moveScale ? 3.5 : 5.0;
+  effectiveDeg = Math.max(minDeg, Number(effectiveDeg.toFixed(1)));
+  const effectiveCm = Number((effectiveDeg / degPerCm).toFixed(1));
 
   return {
     ...windEval,
+    degPerCm,
+    chartSizeLabel: mission.chartSizeLabel || 'B4',
     effectiveCm,
-    effectiveDeg: effectiveCm * 10,
+    effectiveDeg,
   };
 }
 
@@ -523,6 +527,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
     stopGoalPortOnLeg1 = false,
     goalDockRadiusDeg = null,
     coastalSpeedScale = 1.0,
+    degPerCm = 10,
   } = options;
   const normHeading = normalizeDeg(headingDeg);
   let curLat = startLat;
@@ -551,7 +556,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
   });
 
   if (!leg1.collided) {
-    const cm = Number((leg1.traveledDeg / 10).toFixed(2));
+    const cm = Number((leg1.traveledDeg / degPerCm).toFixed(2));
     return {
       endLat: leg1.endLat,
       endLon: leg1.endLon,
@@ -684,13 +689,13 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
     }
 
     const leg1Deg = Number(leg1.traveledDeg.toFixed(2));
-    const leg1Cm = Number((leg1Deg / 10).toFixed(2));
+    const leg1Cm = Number((leg1Deg / degPerCm).toFixed(2));
     const leg2Deg = Number(leg2.traveledDeg.toFixed(2));
-    const leg2Cm = Number((leg2Deg / 10).toFixed(2));
+    const leg2Cm = Number((leg2Deg / degPerCm).toFixed(2));
     const leg3Deg = leg3 ? Number(leg3.traveledDeg.toFixed(2)) : 0;
-    const leg3Cm = Number((leg3Deg / 10).toFixed(2));
+    const leg3Cm = Number((leg3Deg / degPerCm).toFixed(2));
     const totalDeg = Number((leg1Deg + leg2Deg + leg3Deg).toFixed(2));
-    const totalCm = Number((totalDeg / 10).toFixed(2));
+    const totalCm = Number((totalDeg / degPerCm).toFixed(2));
 
     const segments = [];
     if (leg1Cm > 0.05) {
@@ -764,7 +769,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
   const endLat = Number(endLatRaw.toFixed(3));
   const endLon = Number(endLonRaw.toFixed(3));
   const actualDeg = b4EuclideanDeg(curLat, curLon, endLat, endLon);
-  const actualCm = Number((actualDeg / 10).toFixed(2));
+  const actualCm = Number((actualDeg / degPerCm).toFixed(2));
   const blockedRanges = computeBlockedAzimuthSummary(endLat, endLon, 2.0);
 
   return {
@@ -797,6 +802,7 @@ export function executeSailTurn(state, rng = Math.random) {
       ? mission.goalPortId
       : null;
 
+  const degPerCm = mission.chartDegPerCm || 10;
   const planned = computePlannedMove(state);
   const moveResult = resolveMovement(
     state.lat,
@@ -808,6 +814,7 @@ export function executeSailTurn(state, rng = Math.random) {
       stopGoalPortOnLeg1: Boolean(activeOneWayGoalId),
       goalDockRadiusDeg: mission.goalDockRadiusDeg ?? null,
       coastalSpeedScale: mission.coastalSpeedScale ?? 1.0,
+      degPerCm,
     },
   );
 
@@ -983,6 +990,8 @@ export function executeSailTurn(state, rng = Math.random) {
     windClass: planned.windClass,
     plannedCm: planned.effectiveCm,
     actualCm: moveResult.actualCm,
+    degPerCm,
+    chartSizeLabel: mission.chartSizeLabel || 'B4',
     collided: moveResult.collided,
     coastalGuided: Boolean(moveResult.coastalGuided),
     resumedOriginalHeading: Boolean(moveResult.resumedOriginalHeading),
@@ -1478,6 +1487,7 @@ export function getNearbyFleets(
   myHeadingDeg,
   peers,
   maxRadiusDeg = FLEET_RADAR_RADIUS_DEG,
+  degPerCm = 10,
 ) {
   const results = [];
   for (const peer of peers) {
@@ -1500,7 +1510,7 @@ export function getNearbyFleets(
       results.push({
         ...peer,
         distDeg: Number(distDeg.toFixed(2)),
-        distCm: Number((distDeg / 10).toFixed(1)),
+        distCm: Number((distDeg / degPerCm).toFixed(1)),
         absBearing: Math.round(absBearing),
         relBearing: Number(relBearing.toFixed(1)),
         sectorLabel,

@@ -279,7 +279,7 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
                 <MapPin className="w-3 h-3 text-[#991b1b]" />
                 {mission.rulesNote}
               </span>
-              <span>모눈 1 cm = 10°</span>
+              <span>모눈 1 cm = {mission.chartDegPerCm || 10}° ({mission.chartSizeLabel || 'B4'})</span>
             </div>
           </div>
 
@@ -292,7 +292,7 @@ export default function MissionBriefingModal({ missionId = 'mission_1', onClose 
               <div className="flex items-start gap-1.5">
                 <Compass className="w-3.5 h-3.5 text-[#7a4b1e] shrink-0 mt-0.5" />
                 <span>
-                  <strong>1. 조타·작도:</strong> 방위와 바람({mission.moveScale ? `${Math.round(mission.moveScale * 100)}% 속도` : '1~4 cm'})에 맞춰 항해한 뒤 B4 지도에 기록하세요. <strong>{mission.positionCheckInterval || 3}턴마다 지도로 현재 위치</strong>가 공개되며, 빈 땅 상륙 시 원주민을 만날 수 있습니다!
+                  <strong>1. 조타·작도:</strong> 방위와 바람에 맞춰 항해한 뒤 <strong>{mission.chartSizeLabel || 'B4'} 지도</strong>에 기록하세요. <strong>{mission.positionCheckInterval || 3}턴마다 지도로 현재 위치</strong>가 공개되며, 빈 땅 상륙 시 원주민을 만날 수 있습니다!
                 </span>
               </div>
               <div className="flex items-start gap-1.5">

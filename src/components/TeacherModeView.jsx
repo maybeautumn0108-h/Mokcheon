@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   Compass,
+  Download,
   Eye,
   EyeOff,
   FastForward,
@@ -202,6 +203,18 @@ export default function TeacherModeView({
               <Plus className="w-3.5 h-3.5" />
               방 추가
             </button>
+            {batchMissionId === 'mission_event_cape' && (
+              <a
+                href={`${import.meta.env.BASE_URL}A4_%ED%96%89%EC%82%AC%EC%9A%A9_%ED%9D%AC%EB%A7%9D%EB%B4%89_%ED%95%AD%ED%95%B4%EB%8F%84.pdf`}
+                download="A4_행사용_희망봉_항해도.pdf"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-xl border border-amber-400/50 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-1.5 text-[11px] font-bold text-amber-200 transition"
+              >
+                <Download className="w-3.5 h-3.5 text-amber-300" />
+                A4 행사 지도 PDF
+              </a>
+            )}
           </form>
 
           <div className="flex flex-wrap items-center gap-1.5 text-xs">

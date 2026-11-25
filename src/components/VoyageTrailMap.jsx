@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { LAND_POLYGONS } from '../data/worldCoastlines.js';
 import { PORTS, getPortById } from '../data/ports.js';
+import { getMissionById } from '../data/missions.js';
 
 const BASE_X = -170;
 const BASE_Y = -75;
@@ -19,6 +20,8 @@ const BASE_W = 340;
 const BASE_H = 140;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
+// Event A4 chart region center (85°W ~ 30°E => cx -27.5, 50°N ~ 40°S => cy -5) at 2.4x zoom
+const A4_EVENT_VIEW = { zoom: 2.35, cx: -27.5, cy: -5 };
 
 function formatCoord(lat, lon) {
   const latStr = lat >= 0 ? `${lat.toFixed(1)}°N` : `${Math.abs(lat).toFixed(1)}°S`;
@@ -65,10 +68,14 @@ function buildTrailSegments(trail) {
 
 export default function VoyageTrailMap({
   state,
-  title = '내 항해 경로 vs B4 항해도 비교',
+  title,
   coordLabel = '최종 위치',
   defaultExpanded = false,
 }) {
+  const mission = getMissionById(state?.missionId);
+  const isA4Event = mission?.chartDegPerCm === 5;
+  const resolvedTitle =
+    title || (isA4Event ? '내 항해 경로 vs A4 행사 항해도 비교' : '내 항해 경로 vs B4 항해도 비교');
   const [isFullscreen, setIsFullscreen] = useState(defaultExpanded);
   const trail = state?.trail || [];
   const lastPoint = trail[trail.length - 1] || {
@@ -76,7 +83,9 @@ export default function VoyageTrailMap({
     lon: state?.lon ?? -9.1,
   };
 
-  const [view, setView] = useState(() => clampView(1, 0, -5));
+  const [view, setView] = useState(() =>
+    isA4Event ? clampView(A4_EVENT_VIEW.zoom, A4_EVENT_VIEW.cx, A4_EVENT_VIEW.cy) : clampView(1, 0, -5),
+  );
   const dragRef = useRef(null);
 
   const segments = useMemo(() => buildTrailSegments(trail), [trail]);
@@ -163,7 +172,7 @@ export default function VoyageTrailMap({
       <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-2 border-b border-slate-800 bg-slate-900/95">
         <span className="text-xs font-black text-amber-300 flex items-center gap-1.5 min-w-0 truncate">
           <MapIcon className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">{title}</span>
+          <span className="truncate">{resolvedTitle}</span>
         </span>
 
         <div className="flex items-center gap-1 shrink-0">

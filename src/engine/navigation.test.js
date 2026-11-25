@@ -822,12 +822,21 @@ test('19. Event mission (mission_event_cape): 15 turns, 2-turn map check, doldru
   assert.equal(mission.positionCheckInterval, 2);
   assert.equal(mission.isOneWayGoal, true);
   assert.equal(mission.goalPortId, 'goodhope');
+  assert.equal(mission.chartDegPerCm, 5);
+  assert.equal(mission.chartSizeLabel, 'A4');
 
-  // Turn 1: not a position check turn; Turn 2: position check turn (every 2 turns)
+  // Turn 1: not a position check turn; Turn 2: position check turn (every 2 turns), scaled to A4 (1cm = 5deg)
   let state = createInitialGameState('mission_event_cape');
+  const planned = computePlannedMove({ ...state, headingDeg: 205 });
+  assert.equal(planned.degPerCm, 5);
+  assert.equal(planned.chartSizeLabel, 'A4');
+  assert.equal(planned.effectiveCm, Number((planned.effectiveDeg / 5).toFixed(1)));
   const t1 = executeSailTurn({ ...state, turnStep: 'sail', headingDeg: 205 }, () => 0.9);
   assert.equal(t1.outcome.isPositionCheckTurn, false);
   assert.equal(t1.outcome.positionCheckInterval, 2);
+  assert.equal(t1.outcome.degPerCm, 5);
+  assert.equal(t1.outcome.chartSizeLabel, 'A4');
+  assert.equal(t1.outcome.plannedCm, planned.effectiveCm);
 
   const t2 = executeSailTurn(
     { ...t1.nextState, turnStep: 'sail', headingDeg: 205 },

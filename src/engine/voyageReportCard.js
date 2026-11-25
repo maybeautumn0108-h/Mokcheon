@@ -158,23 +158,32 @@ export function renderVoyageReportCanvas({ settlement, state, teamName }) {
   ctx.fillStyle = '#e8f1f5';
   ctx.fillRect(mapX, mapY, mapW, mapH);
 
-  const toCanvasX = (lon) => mapX + ((lon + 170) / 340) * mapW;
-  const toCanvasY = (lat) => mapY + ((75 - lat) / 140) * mapH;
+  const isA4Event = settlement?.mission?.chartDegPerCm === 5;
+  const lonMin = isA4Event ? -142 : -170;
+  const lonMax = isA4Event ? 70 : 170;
+  const lonSpan = lonMax - lonMin;
+  const latMax = isA4Event ? 50 : 75;
+  const latMin = isA4Event ? -40 : -65;
+  const latSpan = latMax - latMin;
+
+  const toCanvasX = (lon) => mapX + ((lon - lonMin) / lonSpan) * mapW;
+  const toCanvasY = (lat) => mapY + ((latMax - lat) / latSpan) * mapH;
 
   // Grid lines
-  for (let lon = -170; lon <= 170; lon += 10) {
+  const gridStep = isA4Event ? 5 : 10;
+  for (let lon = Math.ceil(lonMin / gridStep) * gridStep; lon <= lonMax; lon += gridStep) {
     const x = toCanvasX(lon);
-    ctx.strokeStyle = lon === 0 ? '#94a3b8' : '#cbd5e1';
-    ctx.lineWidth = lon === 0 ? 1.8 : 0.8;
+    ctx.strokeStyle = lon === 0 ? '#94a3b8' : lon % 10 === 0 ? '#cbd5e1' : '#e2e8f0';
+    ctx.lineWidth = lon === 0 ? 1.8 : lon % 10 === 0 ? 0.9 : 0.45;
     ctx.beginPath();
     ctx.moveTo(x, mapY);
     ctx.lineTo(x, mapY + mapH);
     ctx.stroke();
   }
-  for (let lat = -60; lat <= 70; lat += 10) {
+  for (let lat = Math.ceil(latMin / gridStep) * gridStep; lat <= latMax; lat += gridStep) {
     const y = toCanvasY(lat);
-    ctx.strokeStyle = lat === 0 ? '#dc2626' : '#cbd5e1';
-    ctx.lineWidth = lat === 0 ? 1.8 : 0.8;
+    ctx.strokeStyle = lat === 0 ? '#dc2626' : lat % 10 === 0 ? '#cbd5e1' : '#e2e8f0';
+    ctx.lineWidth = lat === 0 ? 1.8 : lat % 10 === 0 ? 0.9 : 0.45;
     ctx.beginPath();
     ctx.moveTo(mapX, y);
     ctx.lineTo(mapX + mapW, y);

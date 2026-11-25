@@ -3,6 +3,7 @@ import {
   Anchor,
   Compass,
   Crown,
+  Download,
   Flag,
   Lock,
   LogOut,
@@ -163,6 +164,18 @@ export default function LobbyView({
                     </option>
                   ))}
                 </select>
+                {soloMissionId === 'mission_event_cape' && (
+                  <a
+                    href={`${import.meta.env.BASE_URL}A4_%ED%96%89%EC%82%AC%EC%9A%A9_%ED%9D%AC%EB%A7%9D%EB%B4%89_%ED%95%AD%ED%95%B4%EB%8F%84.pdf`}
+                    download="A4_행사용_희망봉_항해도.pdf"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 w-full rounded-lg border border-amber-500/45 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-1.5 text-[11px] font-bold text-amber-200 transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-300" />
+                    A4 행사용 지도 PDF 받기 (1 cm = 5°)
+                  </a>
+                )}
               </div>
 
               {showPinBox && (
@@ -240,6 +253,18 @@ export default function LobbyView({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">{activeMission.summary}</p>
+                {activeMission.id === 'mission_event_cape' && (
+                  <a
+                    href={`${import.meta.env.BASE_URL}A4_%ED%96%89%EC%82%AC%EC%9A%A9_%ED%9D%AC%EB%A7%9D%EB%B4%89_%ED%95%AD%ED%95%B4%EB%8F%84.pdf`}
+                    download="A4_행사용_희망봉_항해도.pdf"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 w-full rounded-lg border border-amber-500/45 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-1.5 text-[11px] font-bold text-amber-200 transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-300" />
+                    A4 행사용 지도 PDF 받기 (1 cm = 5°)
+                  </a>
+                )}
                 {isHost && onChangeRoomMission && (
                   <div className="pt-1">
                     <label className="block text-[10px] text-sky-300 font-bold mb-1">
