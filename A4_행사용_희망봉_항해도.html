@@ -23,7 +23,6 @@
       margin: 0 auto;
       padding: 5.5mm 6mm;
       background: #f5ebd6;
-      background-image: radial-gradient(circle at 38% 45%, #fdf6e7 0%, #f1e3c6 72%, #e6d2aa 100%);
       color: #2c1d0c;
       display: flex;
       flex-direction: column;
@@ -230,17 +229,13 @@
             <marker id="currentArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
               <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#2563eb" />
             </marker>
-            <pattern id="doldrumsHatch" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-              <line x1="0" y1="0" x2="0" y2="2.4" stroke="#d97706" stroke-width="0.32" stroke-opacity="0.22" />
-            </pattern>
           </defs>
 
           <!-- Ocean Parchment Background -->
           <rect x="85" y="25" width="115" height="90" fill="#f7eed9" />
 
           <!-- Equatorial Doldrums Band: 4°S (y=79) to 5°N (y=70) -->
-          <rect x="85" y="70" width="115" height="9" fill="#f59e0b" fill-opacity="0.10" />
-          <rect x="85" y="70" width="115" height="9" fill="url(#doldrumsHatch)" />
+          <rect x="85" y="70" width="115" height="9" fill="#fde68a" fill-opacity="0.42" />
           <line x1="85" y1="70" x2="200" y2="70" stroke="#d97706" stroke-width="0.22" stroke-dasharray="1.2 0.8" />
           <line x1="85" y1="79" x2="200" y2="79" stroke="#d97706" stroke-width="0.22" stroke-dasharray="1.2 0.8" />
 

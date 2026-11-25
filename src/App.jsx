@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Anchor,
@@ -18,18 +18,19 @@ import HelmWheel from './components/HelmWheel.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import TurnResultModal from './components/TurnResultModal.jsx';
 import SituationCardModal from './components/SituationCardModal.jsx';
-import SettlementModal from './components/SettlementModal.jsx';
-import QuadrantTab from './components/QuadrantTab.jsx';
-import TradeLogTab from './components/TradeLogTab.jsx';
-import FleetTab from './components/FleetTab.jsx';
-import TeacherModeView from './components/TeacherModeView.jsx';
 import LobbyView from './components/LobbyView.jsx';
 import ActivityStepPanel from './components/ActivityStepPanel.jsx';
-import InteractionModal from './components/InteractionModal.jsx';
 import TurnTransitionOverlay from './components/TurnTransitionOverlay.jsx';
-import MissionBriefingModal from './components/MissionBriefingModal.jsx';
-import VoyageTrailMap from './components/VoyageTrailMap.jsx';
-import MissionSuccessTributeModal from './components/MissionSuccessTributeModal.jsx';
+
+const SettlementModal = lazy(() => import('./components/SettlementModal.jsx'));
+const QuadrantTab = lazy(() => import('./components/QuadrantTab.jsx'));
+const TradeLogTab = lazy(() => import('./components/TradeLogTab.jsx'));
+const FleetTab = lazy(() => import('./components/FleetTab.jsx'));
+const TeacherModeView = lazy(() => import('./components/TeacherModeView.jsx'));
+const InteractionModal = lazy(() => import('./components/InteractionModal.jsx'));
+const MissionBriefingModal = lazy(() => import('./components/MissionBriefingModal.jsx'));
+const VoyageTrailMap = lazy(() => import('./components/VoyageTrailMap.jsx'));
+const MissionSuccessTributeModal = lazy(() => import('./components/MissionSuccessTributeModal.jsx'));
 import { drawThreeSituationCards } from './data/situationCards.js';
 import { getTurnInfo } from './data/calendar.js';
 import { evaluateMissionProgress, getMissionById } from './data/missions.js';
@@ -1758,26 +1759,28 @@ export default function App() {
 
   if (isTeacherMode) {
     return (
-      <TeacherModeView
-        activeRoomCode={cleanRoom}
-        allRooms={teacherAllRooms}
-        allFleetsByRoom={teacherAllFleetsByRoom}
-        onBackToStudent={() => {
-          setIsTeacherMode(false);
-          if (isSpectatorHost) setPlayMode('lobby');
-        }}
-        onCreateBatchRooms={handleCreateBatchRooms}
-        onBatchStartWaiting={handleBatchStartWaiting}
-        onStartRoom={handleStartRoomByCode}
-        onForceOpenActivityRoom={handleForceOpenActivityByCode}
-        onForceNextTurnRoom={handleForceNextTurnByCode}
-        onResetRoom={handleResetRoomByCode}
-        onKickFleet={handleKickFleet}
-        onDeleteRoom={handleDeleteRoomByCode}
-        onChangeRoomMission={handleChangeRoomMission}
-        onClearInteractionsRoom={handleClearInteractionsByCode}
-        onAddAiFleet={handleAddAiFleet}
-      />
+      <Suspense fallback={<div className="min-h-dvh bg-slate-950 text-slate-300 flex items-center justify-center text-sm font-bold">교사 관제 화면 불러오는 중...</div>}>
+        <TeacherModeView
+          activeRoomCode={cleanRoom}
+          allRooms={teacherAllRooms}
+          allFleetsByRoom={teacherAllFleetsByRoom}
+          onBackToStudent={() => {
+            setIsTeacherMode(false);
+            if (isSpectatorHost) setPlayMode('lobby');
+          }}
+          onCreateBatchRooms={handleCreateBatchRooms}
+          onBatchStartWaiting={handleBatchStartWaiting}
+          onStartRoom={handleStartRoomByCode}
+          onForceOpenActivityRoom={handleForceOpenActivityByCode}
+          onForceNextTurnRoom={handleForceNextTurnByCode}
+          onResetRoom={handleResetRoomByCode}
+          onKickFleet={handleKickFleet}
+          onDeleteRoom={handleDeleteRoomByCode}
+          onChangeRoomMission={handleChangeRoomMission}
+          onClearInteractionsRoom={handleClearInteractionsByCode}
+          onAddAiFleet={handleAddAiFleet}
+        />
+      </Suspense>
     );
   }
 
@@ -2152,43 +2155,45 @@ export default function App() {
             </>
           )}
 
-          {activeTab === 'quadrant' && (
-            <QuadrantTab
-              lat={gameState.lat}
-              currentTurn={gameState.turn}
-              weatherId={gameState.weatherId}
-              onRecordObservation={handleRecordObservation}
-            />
-          )}
+          <Suspense fallback={null}>
+            {activeTab === 'quadrant' && (
+              <QuadrantTab
+                lat={gameState.lat}
+                currentTurn={gameState.turn}
+                weatherId={gameState.weatherId}
+                onRecordObservation={handleRecordObservation}
+              />
+            )}
 
-          {activeTab === 'log' && (
-            <TradeLogTab
-              state={gameState}
-              onBuySupplies={() => setGameState((prev) => buySupplies(prev))}
-              onRepairHull={() => setGameState((prev) => repairHull(prev))}
-              onBuySpecialty={() => setGameState((prev) => buySpecialty(prev))}
-              onSellCargo={(idx) => setGameState((prev) => sellCargoItem(prev, idx))}
-            />
-          )}
+            {activeTab === 'log' && (
+              <TradeLogTab
+                state={gameState}
+                onBuySupplies={() => setGameState((prev) => buySupplies(prev))}
+                onRepairHull={() => setGameState((prev) => repairHull(prev))}
+                onBuySpecialty={() => setGameState((prev) => buySpecialty(prev))}
+                onSellCargo={(idx) => setGameState((prev) => sellCargoItem(prev, idx))}
+              />
+            )}
 
-          {activeTab === 'fleet' && (
-            <FleetTab
-              roomCode={roomCode}
-              roomMeta={roomMeta}
-              playMode={playMode}
-              onChangeRoomCode={setRoomCode}
-              teamName={teamName}
-              onChangeTeamName={setTeamName}
-              showDemoRivals={showDemoRivals}
-              onToggleDemoRivals={() => setShowDemoRivals((v) => !v)}
-              allFleets={allFleets}
-              nearbyFleets={nearbyFleets}
-              myClientId={clientId}
-              isOnlineSync={isSupabaseConfigured}
-              onLeaveToLobby={handleLeaveToLobby}
-              onOpenTeacherMode={() => setIsTeacherMode(true)}
-            />
-          )}
+            {activeTab === 'fleet' && (
+              <FleetTab
+                roomCode={roomCode}
+                roomMeta={roomMeta}
+                playMode={playMode}
+                onChangeRoomCode={setRoomCode}
+                teamName={teamName}
+                onChangeTeamName={setTeamName}
+                showDemoRivals={showDemoRivals}
+                onToggleDemoRivals={() => setShowDemoRivals((v) => !v)}
+                allFleets={allFleets}
+                nearbyFleets={nearbyFleets}
+                myClientId={clientId}
+                isOnlineSync={isSupabaseConfigured}
+                onLeaveToLobby={handleLeaveToLobby}
+                onOpenTeacherMode={() => setIsTeacherMode(true)}
+              />
+            )}
+          </Suspense>
         </main>
 
         <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />
@@ -2202,81 +2207,83 @@ export default function App() {
           onConfirmCard={handleConfirmCard}
         />
       )}
-      {(draftTradePeer || activeInteraction) && (
-        <InteractionModal
-          draftTradePeer={draftTradePeer}
-          activeInteraction={activeInteraction}
-          myClientId={clientId}
-          gameState={gameState}
-          onSendTradeOffer={handleSendTradeOffer}
-          onAcceptTrade={handleAcceptTrade}
-          onDeclineInteraction={handleDeclineInteraction}
-          onCancelInteraction={handleCancelInteraction}
-          onAcceptBattle={handleAcceptBattle}
-          onFleeBattle={handleFleeBattle}
-          onSubmitRpsChoice={handleSubmitRpsChoice}
-          onCloseCompleted={handleCloseCompletedInteraction}
-        />
-      )}
-      {showSuccessTribute && settlement && (
-        <MissionSuccessTributeModal
-          settlement={settlement}
-          state={gameState}
-          teamName={teamName}
-          onViewSettlement={() => {
-            setShowSuccessTribute(false);
-            setShowSettlement(true);
-          }}
-        />
-      )}
-      {showSettlement && (
-        <SettlementModal
-          settlement={settlement}
-          state={gameState}
-          teamName={teamName}
-          canReset={playMode === 'solo'}
-          onReset={handleReset}
-          onClose={() => setShowSettlement(false)}
-        />
-      )}
-      {showMissionBriefing && (
-        <MissionBriefingModal
-          missionId={gameState.missionId}
-          onClose={() => setShowMissionBriefing(false)}
-        />
-      )}
-      {showPositionCheckMap && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3">
-          <div className="w-full max-w-lg rounded-2xl border border-sky-500/40 bg-slate-900 p-4 space-y-3 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-black text-sky-300 flex items-center gap-1.5">
-                <MapPin className="w-4 h-4" />
-                제{gameState.activeTurn || gameState.turn}턴 정기 위치 확인 ({positionCheckInterval}턴 주기)
+      <Suspense fallback={null}>
+        {(draftTradePeer || activeInteraction) && (
+          <InteractionModal
+            draftTradePeer={draftTradePeer}
+            activeInteraction={activeInteraction}
+            myClientId={clientId}
+            gameState={gameState}
+            onSendTradeOffer={handleSendTradeOffer}
+            onAcceptTrade={handleAcceptTrade}
+            onDeclineInteraction={handleDeclineInteraction}
+            onCancelInteraction={handleCancelInteraction}
+            onAcceptBattle={handleAcceptBattle}
+            onFleeBattle={handleFleeBattle}
+            onSubmitRpsChoice={handleSubmitRpsChoice}
+            onCloseCompleted={handleCloseCompletedInteraction}
+          />
+        )}
+        {showSuccessTribute && settlement && (
+          <MissionSuccessTributeModal
+            settlement={settlement}
+            state={gameState}
+            teamName={teamName}
+            onViewSettlement={() => {
+              setShowSuccessTribute(false);
+              setShowSettlement(true);
+            }}
+          />
+        )}
+        {showSettlement && (
+          <SettlementModal
+            settlement={settlement}
+            state={gameState}
+            teamName={teamName}
+            canReset={playMode === 'solo'}
+            onReset={handleReset}
+            onClose={() => setShowSettlement(false)}
+          />
+        )}
+        {showMissionBriefing && (
+          <MissionBriefingModal
+            missionId={gameState.missionId}
+            onClose={() => setShowMissionBriefing(false)}
+          />
+        )}
+        {showPositionCheckMap && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3">
+            <div className="w-full max-w-lg rounded-2xl border border-sky-500/40 bg-slate-900 p-4 space-y-3 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-black text-sky-300 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" />
+                  제{gameState.activeTurn || gameState.turn}턴 정기 위치 확인 ({positionCheckInterval}턴 주기)
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPositionCheckMap(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
+              <VoyageTrailMap
+                state={gameState}
+                title={`제${gameState.activeTurn || gameState.turn}턴 현재 위치 및 항로`}
+                coordLabel="현재 위치"
+                defaultExpanded
+              />
               <button
                 type="button"
                 onClick={() => setShowPositionCheckMap(false)}
-                className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+                className="w-full rounded-xl bg-sky-500 hover:bg-sky-400 py-2.5 text-sm font-black text-slate-950 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                위치 확인 완료
               </button>
             </div>
-            <VoyageTrailMap
-              state={gameState}
-              title={`제${gameState.activeTurn || gameState.turn}턴 현재 위치 및 항로`}
-              coordLabel="현재 위치"
-              defaultExpanded
-            />
-            <button
-              type="button"
-              onClick={() => setShowPositionCheckMap(false)}
-              className="w-full rounded-xl bg-sky-500 hover:bg-sky-400 py-2.5 text-sm font-black text-slate-950 cursor-pointer"
-            >
-              위치 확인 완료
-            </button>
           </div>
-        </div>
-      )}
+        )}
+      </Suspense>
       <TurnTransitionOverlay transition={turnTransition} />
     </div>
   );

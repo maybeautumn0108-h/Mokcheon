@@ -22,6 +22,26 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 // Event A4 chart region center (85°W ~ 30°E => cx -27.5, 50°N ~ 40°S => cy -5) at 2.4x zoom
 const A4_EVENT_VIEW = { zoom: 2.35, cx: -27.5, cy: -5 };
+const LAND_POLY_POINTS = LAND_POLYGONS.map((poly) =>
+  poly.ring.map(([lon, lat]) => `${lon},${-lat}`).join(' '),
+);
+
+const StaticContinentsLayer = React.memo(function StaticContinentsLayer() {
+  return (
+    <g>
+      {LAND_POLY_POINTS.map((pts, idx) => (
+        <polygon
+          key={`land-${idx}`}
+          points={pts}
+          fill="#d6c198"
+          stroke="#8c734b"
+          strokeWidth={1.1}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </g>
+  );
+});
 
 function formatCoord(lat, lon) {
   const latStr = lat >= 0 ? `${lat.toFixed(1)}°N` : `${Math.abs(lat).toFixed(1)}°S`;
@@ -297,19 +317,8 @@ export default function VoyageTrailMap({
             );
           })}
 
-          {/* Continents */}
-          {LAND_POLYGONS.map((poly, idx) => {
-            const pts = poly.ring.map(([lon, lat]) => `${lon},${-lat}`).join(' ');
-            return (
-              <polygon
-                key={`land-${idx}`}
-                points={pts}
-                fill="#d6c198"
-                stroke="#8c734b"
-                strokeWidth={0.45 * scaleInv}
-              />
-            );
-          })}
+          {/* Continents (Precomputed & Memoized) */}
+          <StaticContinentsLayer />
 
           {/* Ports */}
           {PORTS.map((port) => {

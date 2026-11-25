@@ -24,6 +24,83 @@ import { MISSIONS, getMissionById } from '../data/missions.js';
 import { isFleetOffline } from '../engine/fleetSync.js';
 import { AI_LEVELS, AI_PERSONALITIES, MAX_AI_PER_ROOM } from '../engine/aiPlayer.js';
 
+const TEACHER_STATIC_LAND = LAND_POLYGONS.map((poly) =>
+  poly.ring.map(([lon, lat]) => `${lon},${-lat}`).join(' '),
+);
+
+const TeacherStaticMapLayer = React.memo(function TeacherStaticMapLayer() {
+  return (
+    <g>
+      {Array.from({ length: 35 }).map((_, i) => {
+        const lon = -170 + i * 10;
+        return (
+          <line
+            key={`lon-${lon}`}
+            x1={lon}
+            y1={-75}
+            x2={lon}
+            y2={65}
+            stroke={lon === 0 ? '#94a3b8' : '#cbd5e1'}
+            strokeWidth={lon === 0 ? 0.6 : 0.25}
+          />
+        );
+      })}
+      {Array.from({ length: 15 }).map((_, i) => {
+        const lat = -65 + i * 10;
+        const y = -lat;
+        return (
+          <g key={`lat-${lat}`}>
+            <line
+              x1={-170}
+              y1={y}
+              x2={170}
+              y2={y}
+              stroke={lat === 0 ? '#dc2626' : '#cbd5e1'}
+              strokeWidth={lat === 0 ? 0.6 : 0.25}
+            />
+            {lat % 20 === 0 && (
+              <text
+                x={-168}
+                y={y - 1.2}
+                fontSize="3.4"
+                fontWeight="700"
+                fill={lat === 0 ? '#dc2626' : '#64748b'}
+              >
+                {lat === 0 ? '0° 적도' : lat > 0 ? `${lat}°N` : `${Math.abs(lat)}°S`}
+              </text>
+            )}
+          </g>
+        );
+      })}
+      {TEACHER_STATIC_LAND.map((pts, idx) => (
+        <polygon
+          key={`land-${idx}`}
+          points={pts}
+          fill="#d6c198"
+          stroke="#8c734b"
+          strokeWidth="0.45"
+        />
+      ))}
+      {PORTS.map((port) => {
+        const isStar = port.isHomePort || port.isGoalPort;
+        return (
+          <g key={port.id} transform={`translate(${port.lon}, ${-port.lat})`}>
+            <circle
+              r={isStar ? 2.1 : 1.4}
+              fill={isStar ? '#dc2626' : '#1d4ed8'}
+              stroke="#ffffff"
+              strokeWidth="0.4"
+            />
+            <text x="2.4" y="1" fontSize="3.5" fontWeight="700" fill="#1e293b">
+              {port.name}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
 const FLEET_COLORS = ['#ef4444', '#38bdf8', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
 
 export default function TeacherModeView({
@@ -566,77 +643,7 @@ export default function TeacherModeView({
 
           <div className="relative w-full aspect-[340/140]">
             <svg viewBox="-170 -75 340 140" className="w-full h-full block bg-[#e8f1f5]">
-              {Array.from({ length: 35 }).map((_, i) => {
-                const lon = -170 + i * 10;
-                return (
-                  <line
-                    key={`lon-${lon}`}
-                    x1={lon}
-                    y1={-75}
-                    x2={lon}
-                    y2={65}
-                    stroke={lon === 0 ? '#94a3b8' : '#cbd5e1'}
-                    strokeWidth={lon === 0 ? 0.6 : 0.25}
-                  />
-                );
-              })}
-              {Array.from({ length: 15 }).map((_, i) => {
-                const lat = -65 + i * 10;
-                const y = -lat;
-                return (
-                  <g key={`lat-${lat}`}>
-                    <line
-                      x1={-170}
-                      y1={y}
-                      x2={170}
-                      y2={y}
-                      stroke={lat === 0 ? '#dc2626' : '#cbd5e1'}
-                      strokeWidth={lat === 0 ? 0.6 : 0.25}
-                    />
-                    {lat % 20 === 0 && (
-                      <text
-                        x={-168}
-                        y={y - 1.2}
-                        fontSize="3.4"
-                        fontWeight="700"
-                        fill={lat === 0 ? '#dc2626' : '#64748b'}
-                      >
-                        {lat === 0 ? '0° 적도' : lat > 0 ? `${lat}°N` : `${Math.abs(lat)}°S`}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-
-              {LAND_POLYGONS.map((poly, idx) => {
-                const pts = poly.ring.map(([lon, lat]) => `${lon},${-lat}`).join(' ');
-                return (
-                  <polygon
-                    key={`land-${idx}`}
-                    points={pts}
-                    fill="#d6c198"
-                    stroke="#8c734b"
-                    strokeWidth="0.45"
-                  />
-                );
-              })}
-
-              {PORTS.map((port) => {
-                const isStar = port.isHomePort || port.isGoalPort;
-                return (
-                  <g key={port.id} transform={`translate(${port.lon}, ${-port.lat})`}>
-                    <circle
-                      r={isStar ? 2.1 : 1.4}
-                      fill={isStar ? '#dc2626' : '#1d4ed8'}
-                      stroke="#ffffff"
-                      strokeWidth="0.4"
-                    />
-                    <text x="2.4" y="1" fontSize="3.5" fontWeight="700" fill="#1e293b">
-                      {port.name}
-                    </text>
-                  </g>
-                );
-              })}
+              <TeacherStaticMapLayer />
 
               {mapFleets.map((fleet, idx) => {
                 const color = FLEET_COLORS[idx % FLEET_COLORS.length];
