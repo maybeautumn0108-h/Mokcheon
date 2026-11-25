@@ -27,9 +27,11 @@ export default function TurnResultModal({ outcome, state, onClose }) {
             </div>
             <h3 className="text-base font-black text-white mt-0.5">
               {outcome.stoppedAtPort
-                ? `제${outcome.completedTurn}턴: 연안 항해 중 [${outcome.stoppedAtPort.name}] 도착 정지 (${outcome.actualCm.toFixed(1)} cm)`
+                ? `제${outcome.completedTurn}턴: ${outcome.coastalGuided ? '연안 항해 중' : '항해 중'} [${outcome.stoppedAtPort.name}] 도착 정지 (${outcome.actualCm.toFixed(1)} cm)`
                 : outcome.coastalGuided
-                  ? `제${outcome.completedTurn}턴: 육지를 만나 연안 우회 항해! (총 ${outcome.actualCm.toFixed(1)} cm)`
+                  ? outcome.resumedOriginalHeading
+                    ? `제${outcome.completedTurn}턴: 섬·곶을 우회해 원래 침로로 복귀! (총 ${outcome.actualCm.toFixed(1)} cm)`
+                    : `제${outcome.completedTurn}턴: 육지를 만나 연안 우회 항해! (총 ${outcome.actualCm.toFixed(1)} cm)`
                   : outcome.collided
                     ? outcome.actualCm <= 0.05
                       ? `제${outcome.completedTurn}턴: 육지에 막혀 이 방향으로는 갈 수 없습니다 (0.0 cm)`
@@ -46,7 +48,9 @@ export default function TurnResultModal({ outcome, state, onClose }) {
               <Ruler className="w-4 h-4 text-sky-400 shrink-0" />
               <span>
                 B4 종이 지도 작도
-                {outcome.segments?.length > 1 ? ' (2구간 꺾어 그리기)' : ''}
+                {outcome.segments?.length > 1
+                  ? ` (${outcome.segments.length}구간 꺾어 그리기)`
+                  : ''}
               </span>
             </div>
             {(!outcome.segments || outcome.segments.length <= 1) && (
@@ -58,16 +62,22 @@ export default function TurnResultModal({ outcome, state, onClose }) {
 
           {outcome.segments?.length > 1 && (
             <div className="grid grid-cols-1 gap-1 pt-1 border-t border-sky-500/20 text-xs">
-              {outcome.segments.map((seg, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sky-100">
-                  <span className="text-sky-300 font-bold">
-                    {idx === 0 ? '① 1차 직진 (해안 조우)' : '② 연안 우회 항해'}
-                  </span>
-                  <span className="font-black text-sky-200 tabular-nums">
-                    방위 {String(seg.headingDeg).padStart(3, '0')}° · 자로 {seg.cm.toFixed(1)} cm
-                  </span>
-                </div>
-              ))}
+              {outcome.segments.map((seg, idx) => {
+                const label =
+                  seg.kind === 'coastal'
+                    ? `${idx === 0 ? '①' : '②'} 연안 우회 항해`
+                    : seg.kind === 'resume'
+                      ? `${idx === 1 ? '②' : '③'} 원래 침로 복귀`
+                      : '① 1차 직진 (해안 조우)';
+                return (
+                  <div key={idx} className="flex items-center justify-between text-sky-100">
+                    <span className="text-sky-300 font-bold">{label}</span>
+                    <span className="font-black text-sky-200 tabular-nums">
+                      방위 {String(seg.headingDeg).padStart(3, '0')}° · 자로 {seg.cm.toFixed(1)} cm
+                    </span>
+                  </div>
+                );
+              })}
               <div className="text-right text-[11px] font-bold text-sky-300/90 pt-0.5">
                 총 이동 거리: {outcome.actualCm.toFixed(1)} cm
               </div>
@@ -75,26 +85,40 @@ export default function TurnResultModal({ outcome, state, onClose }) {
           )}
         </div>
 
-        {/* Coastal Skirting / Stop Notice */}
-        {(outcome.coastalGuided || outcome.collided) && (
+        {/* Coastal Skirting / Port Stop / Land Stop Notice */}
+        {(outcome.coastalGuided || outcome.collided || outcome.stoppedAtPort) && (
           <div
             className={`mt-2.5 rounded-xl border p-3 text-xs space-y-1.5 ${
-              outcome.coastalGuided
-                ? 'border-cyan-500/45 bg-cyan-950/35 text-cyan-100'
-                : 'border-amber-500/45 bg-amber-950/40 text-amber-100'
+              outcome.stoppedAtPort && !outcome.coastalGuided
+                ? 'border-emerald-500/45 bg-emerald-950/35 text-emerald-100'
+                : outcome.coastalGuided
+                  ? 'border-cyan-500/45 bg-cyan-950/35 text-cyan-100'
+                  : 'border-amber-500/45 bg-amber-950/40 text-amber-100'
             }`}
           >
             <div
               className={`font-bold flex items-center gap-1.5 ${
-                outcome.coastalGuided ? 'text-cyan-300' : 'text-amber-300'
+                outcome.stoppedAtPort && !outcome.coastalGuided
+                  ? 'text-emerald-300'
+                  : outcome.coastalGuided
+                    ? 'text-cyan-300'
+                    : 'text-amber-300'
               }`}
             >
-              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {outcome.stoppedAtPort && !outcome.coastalGuided ? (
+                <Anchor className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
               <span>
                 {outcome.stoppedAtPort
-                  ? `육지와 맞닥뜨려 해안을 따라 우회 항해하던 중 [${outcome.stoppedAtPort.name}] 기항지를 만나 즉시 멈췄습니다!`
+                  ? outcome.coastalGuided
+                    ? `해안을 따라 우회 항해하던 중 [${outcome.stoppedAtPort.name}] 기항지를 만나 즉시 멈췄습니다!`
+                    : `항해 도중 [${outcome.stoppedAtPort.name}] 기항지 반경에 진입해 멈췄습니다! (3단계에서 기항 가능)`
                   : outcome.coastalGuided
-                    ? `육지에 부딪혀 기존 항로(${String(outcome.headingDeg).padStart(3, '0')}°)와 가장 가까운 방위(${String(outcome.coastalHeadingDeg).padStart(3, '0')}°)로 연안 항해를 진행했습니다.`
+                    ? outcome.resumedOriginalHeading
+                      ? `육지(방위 ${String(outcome.headingDeg).padStart(3, '0')}°)를 만나 방위 ${String(outcome.coastalHeadingDeg).padStart(3, '0')}°로 돌아나온 뒤, 다시 원래 침로(${String(outcome.headingDeg).padStart(3, '0')}°)로 복귀했습니다.`
+                      : `육지에 부딪혀 기존 항로(${String(outcome.headingDeg).padStart(3, '0')}°)와 가장 가까운 방위(${String(outcome.coastalHeadingDeg).padStart(3, '0')}°)로 연안 항해를 진행했습니다.`
                     : outcome.hitBoundary
                       ? '항해도 경계에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없습니다.'
                       : '육지(해안선)에 닿아 이동을 멈췄습니다. 그쪽 방향으로는 갈 수 없으니 방위를 돌려주세요.'}

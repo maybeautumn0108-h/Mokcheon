@@ -878,21 +878,44 @@ test('19. Event mission (mission_event_cape): 10 turns, 2-turn map check, one-wa
   );
 });
 
-test('20. Method A coastal skirting stops at newly encountered major ports, ignores small islands, and keeps Taiwan as land', () => {
-  // 1) Taiwan (23.5°N, 121.0°E) remains a full landmass polygon
+test('20. 3-segment island bypass resumes original heading after Taiwan, and small-island ports stop on entry then depart freely', () => {
+  // 1) Taiwan (23.5°N, 121.0°E) remains a full landmass polygon, and bypassing it resumes original heading (3 segments)
   assert.equal(isPointOnLand(23.5, 121.0), true);
+  const bypassTaiwan = resolveMovement(27.0, 121.0, 180, 40);
+  assert.equal(bypassTaiwan.collided, true);
+  assert.equal(bypassTaiwan.coastalGuided, true);
+  assert.equal(bypassTaiwan.resumedOriginalHeading, true);
+  assert.equal(bypassTaiwan.segments.length, 3);
+  assert.deepEqual(
+    bypassTaiwan.segments.map((s) => s.kind),
+    ['straight', 'coastal', 'resume'],
+  );
+  assert.equal(bypassTaiwan.segments[2].headingDeg, 180);
 
-  // 2) Small island ports (Canaries, Azores, Cabo Verde, Guam) are ignored on horizon landmarks
-  //    so players are not misled into thinking open sea routes are blocked, while manual docking still works
+  // 2) Small island ports (Canaries, Azores, Cabo Verde, Guam) have no blocking land and are ignored on horizon landmarks
+  assert.equal(isPointOnLand(28.1, -15.4), false);
   const nearCanariesLms = findVisiblePortLandmarks(30.0, -14.5, 205, 10.0);
   assert.equal(
     nearCanariesLms.some((lm) => lm.id === 'canaries'),
     false,
     'Canary Islands should be ignored in horizon landmarks',
   );
-  assert.equal(findNearbyPort(28.1, -15.4)?.id, 'canaries');
+  const canariesPort = findNearbyPort(28.1, -15.4);
+  assert.equal(canariesPort?.id, 'canaries');
+  assert.equal(canariesPort?.isSmallIsland, true);
 
-  // 3) Sailing NE at (2.0, -11.0) for 2.5 cm hits Ivory Coast, glides ESE along Gulf of Guinea,
+  // 3) Passing through Canaries from Lisbon stops upon entering Canaries dock radius,
+  //    then departing from inside Canaries on the next turn moves freely through without halting again
+  const stopAtCanaries = resolveMovement(38.7, -9.1, 205, 30);
+  assert.equal(stopAtCanaries.collided, false);
+  assert.equal(stopAtCanaries.stoppedAtPort?.id, 'canaries');
+  assert.equal(findNearbyPort(stopAtCanaries.endLat, stopAtCanaries.endLon)?.id, 'canaries');
+
+  const departCanaries = resolveMovement(stopAtCanaries.endLat, stopAtCanaries.endLon, 215, 20);
+  assert.notEqual(departCanaries.stoppedAtPort?.id, 'canaries');
+  assert.ok(departCanaries.actualCm >= 1.5);
+
+  // 4) Sailing NE at (2.0, -11.0) for 2.5 cm hits Ivory Coast, glides ESE along Gulf of Guinea,
   //    and halts unconditionally upon entering Elmina radius
   const coastGlideToPort = resolveMovement(2.0, -11.0, 45, 25);
   assert.equal(coastGlideToPort.collided, true);
@@ -901,8 +924,4 @@ test('20. Method A coastal skirting stops at newly encountered major ports, igno
   assert.equal(coastGlideToPort.stoppedAtPort?.id, 'elmina');
   assert.ok(coastGlideToPort.actualCm < 2.5, 'Should stop early upon entering Elmina radius');
   assert.equal(findNearbyPort(coastGlideToPort.endLat, coastGlideToPort.endLon)?.id, 'elmina');
-
-  // 4) Small island port (Cabo Verde) is ignored during coastal/collision skirting when passing south
-  const passSmallIsland = resolveMovement(22.0, -18.0, 120, 35);
-  assert.notEqual(passSmallIsland.stoppedAtPort?.id, 'caboverde');
 });

@@ -2096,11 +2096,11 @@ export default function App() {
                   />
 
                   <div className="space-y-2 pt-0.5">
-                    {canSail && isBlockedAhead && (
+                    {canSail && isBlockedAhead && !nearbyPort?.isSmallIsland && (
                       <div className="rounded-xl border border-amber-400/50 bg-amber-950/45 px-3 py-2 text-xs font-bold text-amber-200 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                         <span>
-                          현재 방위({String(gameState.headingDeg).padStart(3, '0')}°) 바로 앞은 육지(해안)입니다. 이 방향으로는 갈 수 없으니 방위를 돌려주세요!
+                          현재 방위({String(gameState.headingDeg).padStart(3, '0')}°) 바로 앞은 해안입니다. 이대로 출항하면 해안을 따라 연안 우회 항해를 진행합니다.
                         </span>
                       </div>
                     )}

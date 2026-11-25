@@ -88,9 +88,16 @@ export default function DeckView({
   const isStormy = weatherId === 'storm' || weatherId === 'squall';
   const polarZone = useMemo(() => getPolarZone(lat), [lat]);
   const isSnowing = useMemo(() => isSnowLatitude(lat), [lat]);
+  // Guarantee complete visual freedom when anchored/departing at a small-island port (e.g. Canaries, Azores)
+  const hideCoastInCockpit = Boolean(nearbyPort?.isSmallIsland);
+  const effectiveBlockedAhead = hideCoastInCockpit ? false : isBlockedAhead;
+
   const sightings = useMemo(
-    () => getCoastalSightings(lat, lon, headingDeg, COAST_SIGHT_RADIUS_DEG),
-    [lat, lon, headingDeg],
+    () =>
+      hideCoastInCockpit
+        ? []
+        : getCoastalSightings(lat, lon, headingDeg, COAST_SIGHT_RADIUS_DEG),
+    [lat, lon, headingDeg, hideCoastInCockpit],
   );
 
   const cliffGroups = useMemo(() => buildCliffPath(sightings), [sightings]);
@@ -138,15 +145,17 @@ export default function DeckView({
 
   const visibleLandmarks = useMemo(
     () =>
-      findVisiblePortLandmarks(lat, lon, headingDeg, 10.0)
-        .filter((lm) => Math.abs(lm.relBearing) <= FOV_HALF_DEG)
-        .map((lm) => {
-          const x = ((lm.relBearing + FOV_HALF_DEG) / (2 * FOV_HALF_DEG)) * 360;
-          const closeness = Math.max(0, 1 - lm.distDeg / 10.0);
-          const scale = 0.52 + closeness * 0.65;
-          return { ...lm, x, scale };
-        }),
-    [lat, lon, headingDeg],
+      hideCoastInCockpit
+        ? []
+        : findVisiblePortLandmarks(lat, lon, headingDeg, 10.0)
+            .filter((lm) => Math.abs(lm.relBearing) <= FOV_HALF_DEG)
+            .map((lm) => {
+              const x = ((lm.relBearing + FOV_HALF_DEG) / (2 * FOV_HALF_DEG)) * 360;
+              const closeness = Math.max(0, 1 - lm.distDeg / 10.0);
+              const scale = 0.52 + closeness * 0.65;
+              return { ...lm, x, scale };
+            }),
+    [lat, lon, headingDeg, hideCoastInCockpit],
   );
 
   const closestRival = nearbyFleets[0] || null;
@@ -202,7 +211,7 @@ export default function DeckView({
       </div>
 
       {/* Bottom Viewport Alerts: Polar Warning, Rival Fleet & Blocked Land Ahead */}
-      {(polarZone || closestRival || isBlockedAhead) && (
+      {(polarZone || closestRival || effectiveBlockedAhead) && (
         <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 pointer-events-none flex flex-col items-center gap-1">
           {polarZone && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-950/90 backdrop-blur-sm border border-cyan-300/70 px-3 py-1 text-[11px] font-bold text-cyan-100 shadow-lg">
@@ -210,7 +219,7 @@ export default function DeckView({
               <span>{polarZone.warning}</span>
             </div>
           )}
-          {isBlockedAhead && (
+          {effectiveBlockedAhead && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-950/90 backdrop-blur-sm border border-amber-400/60 px-3 py-1 text-[11px] font-bold text-amber-200 shadow-lg">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span>정면 연안 인접 · 출항 시 해안을 따라 우회 항해합니다</span>

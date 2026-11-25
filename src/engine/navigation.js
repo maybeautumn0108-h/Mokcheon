@@ -336,12 +336,22 @@ export function isDirectionImmediatelyBlocked(lat, lon, headingDeg, checkDeg = 0
   return false;
 }
 
-function findDockableMajorPort(lat, lon, excludedPortIds) {
+function findDockablePortForStop(
+  lat,
+  lon,
+  excludedPortIds,
+  { includeMajor = true, includeSmallIsland = true, onlyPortId = null } = {},
+) {
   let closest = null;
   let closestDist = Infinity;
   for (const port of PORTS) {
-    if (port.isSmallIsland) continue;
     if (excludedPortIds?.has(port.id)) continue;
+    if (onlyPortId) {
+      if (port.id !== onlyPortId) continue;
+    } else {
+      if (port.isSmallIsland && !includeSmallIsland) continue;
+      if (!port.isSmallIsland && !includeMajor) continue;
+    }
     const dist = b4EuclideanDeg(lat, lon, port.lat, port.lon);
     if (dist <= port.dockRadiusDeg && dist < closestDist) {
       closest = { id: port.id, name: port.name, lat: port.lat, lon: port.lon, distanceDeg: dist };
@@ -351,13 +361,39 @@ function findDockableMajorPort(lat, lon, excludedPortIds) {
   return closest;
 }
 
+function isHeadingClearAhead(lat, lon, headingDeg, lookaheadDeg) {
+  if (lookaheadDeg <= 0.2) return true;
+  const rad = (normalizeDeg(headingDeg) * Math.PI) / 180;
+  const dirLon = Math.sin(rad);
+  const dirLat = Math.cos(rad);
+  const steps = Math.max(1, Math.round(lookaheadDeg / 0.25));
+  for (let i = 1; i <= steps; i++) {
+    const pLat = lat + dirLat * (i * 0.25);
+    const pLon = wrapLon(lon + dirLon * (i * 0.25));
+    if (
+      pLat > 75 ||
+      pLat < -65 ||
+      isPointOnLand(pLat, pLon) ||
+      isPointOnLand(Number(pLat.toFixed(3)), Number(pLon.toFixed(3)))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function marchStraightRay(
   startLat,
   startLon,
   headingDeg,
   maxDeg,
   excludedPortIds,
-  { stopOnMajorPort = false, stopGoalPortId = null } = {},
+  {
+    stopOnMajorPort = false,
+    stopOnSmallIslandPort = false,
+    stopGoalPortId = null,
+    resumeHeadingDeg = null,
+  } = {},
 ) {
   const normHeading = normalizeDeg(headingDeg);
   const rad = (normHeading * Math.PI) / 180;
@@ -372,6 +408,7 @@ function marchStraightRay(
   let collided = false;
   let hitBoundary = false;
   let stoppedAtPort = null;
+  let clearedToResume = false;
 
   for (let i = 1; i <= totalSteps; i++) {
     const nextLat = curLat + dirLat * stepDeg;
@@ -395,17 +432,30 @@ function marchStraightRay(
     curLon = nextLon;
     traveledDeg = Math.min(maxDeg, i * stepDeg);
 
-    if (stopOnMajorPort) {
-      const hitPort = findDockableMajorPort(curLat, curLon, excludedPortIds);
-      if (hitPort) {
-        stoppedAtPort = hitPort;
-        break;
-      }
-    } else if (stopGoalPortId) {
-      const hitPort = findDockableMajorPort(curLat, curLon, excludedPortIds);
-      if (hitPort && hitPort.id === stopGoalPortId) {
-        stoppedAtPort = hitPort;
-        break;
+    const hitPort = findDockablePortForStop(curLat, curLon, excludedPortIds, {
+      includeMajor: stopOnMajorPort,
+      includeSmallIsland: stopOnSmallIslandPort,
+      onlyPortId: !stopOnMajorPort && !stopOnSmallIslandPort ? stopGoalPortId : null,
+    });
+    const hitGoal =
+      !hitPort && stopGoalPortId
+        ? findDockablePortForStop(curLat, curLon, excludedPortIds, { onlyPortId: stopGoalPortId })
+        : null;
+    const matchedPort = hitPort || hitGoal;
+    if (matchedPort) {
+      stoppedAtPort = matchedPort;
+      break;
+    }
+
+    // While coastal-skirting past an island or cape, check if the original heading opens back up
+    if (resumeHeadingDeg !== null && traveledDeg >= 0.8) {
+      const remainingAfter = maxDeg - traveledDeg;
+      if (remainingAfter >= 0.4) {
+        const checkAheadDeg = Math.min(remainingAfter, 4.0);
+        if (isHeadingClearAhead(curLat, curLon, resumeHeadingDeg, checkAheadDeg)) {
+          clearedToResume = true;
+          break;
+        }
       }
     }
   }
@@ -420,16 +470,21 @@ function marchStraightRay(
     collided,
     hitBoundary,
     stoppedAtPort,
+    clearedToResume,
   };
 }
 
 /**
- * Ray-march movement on the B4 Euclidean plane (Method A: 2-segment coastal skirting).
- * - Leg 1 sails straight along `headingDeg`.
- * - If Leg 1 hits coastline (`!hitBoundary`), it switches once to the closest open
- *   straight coastal heading (up to ±105°) and continues with remaining movement.
- * - While colliding or skirting along the coast, encountering any newly entered
- *   non-small-island port halts movement unconditionally right there.
+ * Ray-march movement on the B4 Euclidean plane (up to 3 segments):
+ * - Leg 1 sails straight along `headingDeg`. Even on open sea, newly entered
+ *   small-island ports (Canaries, Azores, Cabo Verde, Guam) or `stopGoalPortId`
+ *   halt movement so the ship can dock cleanly and sail away next turn.
+ * - If Leg 1 hits coastline (`!hitBoundary`), Leg 2 steers to the closest open
+ *   straight coastal heading (up to ±105°).
+ * - If Leg 2 clears the island/cape and the original `headingDeg` opens back up,
+ *   Leg 3 automatically resumes `headingDeg` with the remaining distance.
+ * - While colliding or coastal-skirting (Leg 2 / Leg 3), encountering any newly
+ *   entered port halts movement unconditionally right there.
  */
 export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, options = {}) {
   const { goalPortId = null, stopGoalPortOnLeg1 = false } = options;
@@ -454,6 +509,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
 
   const leg1 = marchStraightRay(curLat, curLon, normHeading, plannedDeg, startingPortIds, {
     stopOnMajorPort: false,
+    stopOnSmallIslandPort: true,
     stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null,
   });
 
@@ -466,24 +522,37 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
       actualCm: cm,
       collided: false,
       coastalGuided: false,
+      resumedOriginalHeading: false,
       coastalHeadingDeg: null,
       stoppedAtPort: leg1.stoppedAtPort
         ? { id: leg1.stoppedAtPort.id, name: leg1.stoppedAtPort.name }
         : null,
       hitBoundary: false,
       blockedRanges: [],
-      segments: [{ headingDeg: normHeading, deg: Number(leg1.traveledDeg.toFixed(2)), cm, endLat: leg1.endLat, endLon: leg1.endLon }],
+      segments: [
+        {
+          kind: 'straight',
+          headingDeg: normHeading,
+          deg: Number(leg1.traveledDeg.toFixed(2)),
+          cm,
+          endLat: leg1.endLat,
+          endLon: leg1.endLon,
+        },
+      ],
     };
   }
 
-  // Check if collision point itself reached a newly entered dockable major port
+  // Check if collision point itself reached any newly entered dockable port
   const portAtImpact = !leg1.hitBoundary
-    ? findDockableMajorPort(leg1.endLat, leg1.endLon, startingPortIds)
+    ? findDockablePortForStop(leg1.endLat, leg1.endLon, startingPortIds, {
+        includeMajor: true,
+        includeSmallIsland: true,
+      })
     : null;
 
   const remainingDeg = Math.max(0, plannedDeg - leg1.traveledDeg);
 
-  // Attempt Method A coastal skirting along the closest open heading when hitting non-boundary land
+  // Attempt coastal skirting along the closest open heading when hitting non-boundary land
   let leg2 = null;
   if (!leg1.hitBoundary && !portAtImpact && remainingDeg >= 0.4) {
     const minGoodDeg = Math.min(remainingDeg, 4.0);
@@ -497,7 +566,7 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
           normalizeDeg(normHeading + delta),
           remainingDeg,
           startingPortIds,
-          { stopOnMajorPort: true },
+          { stopOnMajorPort: true, stopOnSmallIslandPort: true, resumeHeadingDeg: normHeading },
         ),
         marchStraightRay(
           leg1.endLat,
@@ -505,15 +574,22 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
           normalizeDeg(normHeading - delta),
           remainingDeg,
           startingPortIds,
-          { stopOnMajorPort: true },
+          { stopOnMajorPort: true, stopOnSmallIslandPort: true, resumeHeadingDeg: normHeading },
         ),
       ];
 
       const good = candidates.filter(
-        (c) => c.traveledDeg >= minGoodDeg || (c.stoppedAtPort && c.traveledDeg >= 0.2),
+        (c) =>
+          c.traveledDeg >= minGoodDeg ||
+          c.clearedToResume ||
+          (c.stoppedAtPort && c.traveledDeg >= 0.2),
       );
       if (good.length > 0) {
-        good.sort((a, b) => b.traveledDeg - a.traveledDeg);
+        // Prefer candidate that resumes original heading sooner cleanly or travels further
+        good.sort(
+          (a, b) =>
+            Number(b.clearedToResume) - Number(a.clearedToResume) || b.traveledDeg - a.traveledDeg,
+        );
         leg2 = good[0];
         break;
       }
@@ -534,16 +610,36 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
   }
 
   if (leg2 && leg2.traveledDeg > 0.2) {
+    // If Leg 2 cleared the island/cape edge without stopping at a port, resume original heading as Leg 3
+    let leg3 = null;
+    const leg3Budget = Math.max(0, remainingDeg - leg2.traveledDeg);
+    if (leg2.clearedToResume && !leg2.stoppedAtPort && leg3Budget >= 0.2) {
+      const candLeg3 = marchStraightRay(
+        leg2.endLat,
+        leg2.endLon,
+        normHeading,
+        leg3Budget,
+        startingPortIds,
+        { stopOnMajorPort: true, stopOnSmallIslandPort: true, stopGoalPortId: stopGoalPortOnLeg1 ? goalPortId : null },
+      );
+      if (candLeg3.traveledDeg >= 0.2) {
+        leg3 = candLeg3;
+      }
+    }
+
     const leg1Deg = Number(leg1.traveledDeg.toFixed(2));
     const leg1Cm = Number((leg1Deg / 10).toFixed(2));
     const leg2Deg = Number(leg2.traveledDeg.toFixed(2));
     const leg2Cm = Number((leg2Deg / 10).toFixed(2));
-    const totalDeg = Number((leg1Deg + leg2Deg).toFixed(2));
+    const leg3Deg = leg3 ? Number(leg3.traveledDeg.toFixed(2)) : 0;
+    const leg3Cm = Number((leg3Deg / 10).toFixed(2));
+    const totalDeg = Number((leg1Deg + leg2Deg + leg3Deg).toFixed(2));
     const totalCm = Number((totalDeg / 10).toFixed(2));
 
     const segments = [];
     if (leg1Cm > 0.05) {
       segments.push({
+        kind: 'straight',
         headingDeg: normHeading,
         deg: leg1Deg,
         cm: leg1Cm,
@@ -552,24 +648,38 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
       });
     }
     segments.push({
+      kind: 'coastal',
       headingDeg: leg2.headingDeg,
       deg: leg2Deg,
       cm: leg2Cm,
       endLat: leg2.endLat,
       endLon: leg2.endLon,
     });
+    if (leg3 && leg3Cm > 0.05) {
+      segments.push({
+        kind: 'resume',
+        headingDeg: normHeading,
+        deg: leg3Deg,
+        cm: leg3Cm,
+        endLat: leg3.endLat,
+        endLon: leg3.endLon,
+      });
+    }
 
-    const blockedRanges = computeBlockedAzimuthSummary(leg2.endLat, leg2.endLon, 2.0);
+    const finalLeg = leg3 || leg2;
+    const finalStopPort = leg3?.stoppedAtPort || leg2.stoppedAtPort || null;
+    const blockedRanges = computeBlockedAzimuthSummary(finalLeg.endLat, finalLeg.endLon, 2.0);
     return {
-      endLat: leg2.endLat,
-      endLon: leg2.endLon,
+      endLat: finalLeg.endLat,
+      endLon: finalLeg.endLon,
       actualDeg: totalDeg,
       actualCm: totalCm,
       collided: true,
       coastalGuided: true,
+      resumedOriginalHeading: Boolean(leg3 && leg3Cm > 0.05),
       coastalHeadingDeg: leg2.headingDeg,
-      stoppedAtPort: leg2.stoppedAtPort
-        ? { id: leg2.stoppedAtPort.id, name: leg2.stoppedAtPort.name }
+      stoppedAtPort: finalStopPort
+        ? { id: finalStopPort.id, name: finalStopPort.name }
         : null,
       hitBoundary: false,
       blockedRanges,
@@ -608,11 +718,12 @@ export function resolveMovement(startLat, startLon, headingDeg, plannedDeg, opti
     actualCm,
     collided: true,
     coastalGuided: false,
+    resumedOriginalHeading: false,
     coastalHeadingDeg: null,
     stoppedAtPort: portAtImpact ? { id: portAtImpact.id, name: portAtImpact.name } : null,
     hitBoundary: leg1.hitBoundary,
     blockedRanges,
-    segments: [{ headingDeg: normHeading, deg: Number(actualDeg.toFixed(2)), cm: actualCm, endLat, endLon }],
+    segments: [{ kind: 'straight', headingDeg: normHeading, deg: Number(actualDeg.toFixed(2)), cm: actualCm, endLat, endLon }],
   };
 }
 
@@ -718,9 +829,11 @@ export function executeSailTurn(state, rng = Math.random) {
   const logTitle = reachedOneWayGoal
     ? `제${state.turn}턴 · ${nearbyPort.name} 도착! 미션 대성공!`
     : moveResult.stoppedAtPort
-      ? `제${state.turn}턴 · 연안 항해 중 ${moveResult.stoppedAtPort.name} 도착 정지 (${moveResult.actualCm.toFixed(1)} cm)`
+      ? `제${state.turn}턴 · ${moveResult.coastalGuided ? '연안 항해 중' : '항해 중'} ${moveResult.stoppedAtPort.name} 도착 정지 (${moveResult.actualCm.toFixed(1)} cm)`
       : moveResult.coastalGuided
-        ? `제${state.turn}턴 항해 · 육지 조우 후 연안 우회 항해 (${moveResult.actualCm.toFixed(1)} cm)`
+        ? moveResult.resumedOriginalHeading
+          ? `제${state.turn}턴 항해 · 섬·연안 우회 후 원래 침로 복귀 (${moveResult.actualCm.toFixed(1)} cm)`
+          : `제${state.turn}턴 항해 · 육지 조우 후 연안 우회 항해 (${moveResult.actualCm.toFixed(1)} cm)`
         : moveResult.collided
           ? moveResult.hitBoundary
             ? `제${state.turn}턴 항해 · 해역 경계 도달 정지 (${moveResult.actualCm.toFixed(1)} cm)`
@@ -814,6 +927,7 @@ export function executeSailTurn(state, rng = Math.random) {
     actualCm: moveResult.actualCm,
     collided: moveResult.collided,
     coastalGuided: Boolean(moveResult.coastalGuided),
+    resumedOriginalHeading: Boolean(moveResult.resumedOriginalHeading),
     coastalHeadingDeg: moveResult.coastalHeadingDeg ?? null,
     stoppedAtPort: moveResult.stoppedAtPort || null,
     segments: moveResult.segments || [],
